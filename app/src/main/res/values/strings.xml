@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Календарь смен и Зарплата \"ОАО Нафтан\"</string>
+    <string name="widget_description">Виджет текущей и следующей смены</string>
 </resources>

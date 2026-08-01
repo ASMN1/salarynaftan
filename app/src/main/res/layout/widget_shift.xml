@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/tvWidgetTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Нафтан"
+        android:textColor="#88FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvWidgetShiftType"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="—"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tvWidgetShiftTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#BBFFFFFF"
+        android:textSize="11sp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tvWidgetNext"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#88FFFFFF"
+        android:textSize="10sp"
+        android:gravity="center"
+        android:layout_marginTop="4dp" />
+
+</LinearLayout>

@@ -3,32 +3,37 @@ package com.example.salarynaftan
 import android.content.Context
 import android.media.RingtoneManager
 import android.net.Uri
+import androidx.compose.ui.graphics.Color
 
 class SettingsManager(private val context: Context) {
 
-    private val prefs = context.getSharedPreferences("alarm_settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
 
     companion object {
-        private const val KEY_VOLUME = "alarm_volume"
-        private const val KEY_RINGTONE_URI = "alarm_ringtone_uri"
-        private const val KEY_IS_DARK = "is_dark_theme"
-        private const val DEFAULT_VOLUME = 0.7f // 70% по умолчанию
+        private const val DEFAULT_VOLUME = 0.7f
+
+        // Значения по умолчанию (Int)
+        private val DEFAULT_PRIMARY_COLOR = 0xFF00E676.toInt()
+        private val DEFAULT_BACKGROUND_COLOR = 0xFF121212.toInt()
+        private val DEFAULT_SURFACE_COLOR = 0xFF1E1E1E.toInt()
     }
 
+    // ----- ГРОМКОСТЬ -----
     fun saveVolume(volume: Float) {
-        prefs.edit().putFloat(KEY_VOLUME, volume).apply()
+        prefs.edit().putFloat(PreferenceKeys.KEY_VOLUME, volume).apply()
     }
 
     fun getVolume(): Float {
-        return prefs.getFloat(KEY_VOLUME, DEFAULT_VOLUME)
+        return prefs.getFloat(PreferenceKeys.KEY_VOLUME, DEFAULT_VOLUME)
     }
 
+    // ----- МЕЛОДИЯ -----
     fun saveRingtoneUri(uriString: String?) {
-        prefs.edit().putString(KEY_RINGTONE_URI, uriString).apply()
+        prefs.edit().putString(PreferenceKeys.KEY_RINGTONE_URI, uriString).apply()
     }
 
     fun getRingtoneUri(): Uri? {
-        val uriString = prefs.getString(KEY_RINGTONE_URI, null)
+        val uriString = prefs.getString(PreferenceKeys.KEY_RINGTONE_URI, null)
         return if (uriString != null) Uri.parse(uriString) else null
     }
 
@@ -42,22 +47,54 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    // ----- ТЕМА -----
     fun saveTheme(isDark: Boolean) {
-        prefs.edit().putBoolean(KEY_IS_DARK, isDark).apply()
+        prefs.edit().putBoolean(PreferenceKeys.KEY_IS_DARK, isDark).apply()
     }
 
     fun isDarkTheme(): Boolean {
-        return prefs.getBoolean(KEY_IS_DARK, true) // Теперь всё чётко!
+        return prefs.getBoolean(PreferenceKeys.KEY_IS_DARK, true)
     }
 
-    private val BRIGADE_KEY = "selected_brigade"
+    // ----- ОСНОВНОЙ ЦВЕТ -----
+    fun getPrimaryColor(): Color {
+        val colorInt = prefs.getInt(PreferenceKeys.KEY_PRIMARY_COLOR, DEFAULT_PRIMARY_COLOR)
+        return Color(colorInt)
+    }
 
+    fun savePrimaryColor(color: Color) {
+        prefs.edit().putInt(PreferenceKeys.KEY_PRIMARY_COLOR, colorToArgb(color)).apply()
+    }
+
+    // ----- ЦВЕТ ФОНА -----
+    fun getBackgroundColor(): Color {
+        val colorInt = prefs.getInt(PreferenceKeys.KEY_BACKGROUND_COLOR, DEFAULT_BACKGROUND_COLOR)
+        return Color(colorInt)
+    }
+
+    fun saveBackgroundColor(color: Color) {
+        prefs.edit().putInt(PreferenceKeys.KEY_BACKGROUND_COLOR, colorToArgb(color)).apply()
+    }
+
+    // ----- ЦВЕТ КАРТОЧЕК (SURFACE) -----
+    fun getSurfaceColor(): Color {
+        val colorInt = prefs.getInt(PreferenceKeys.KEY_SURFACE_COLOR, DEFAULT_SURFACE_COLOR)
+        return Color(colorInt)
+    }
+
+    fun saveSurfaceColor(color: Color) {
+        prefs.edit().putInt(PreferenceKeys.KEY_SURFACE_COLOR, colorToArgb(color)).apply()
+    }
+
+    // ----- БРИГАДА -----
     fun getBrigade(): Int {
-        return prefs.getInt(BRIGADE_KEY, 1).coerceIn(1, 5)
+        return prefs.getInt(PreferenceKeys.BRIGADE_KEY, 1).coerceIn(1, 5)
     }
 
     fun setBrigade(brigade: Int) {
         val safeBrigade = brigade.coerceIn(1, 5)
-        prefs.edit().putInt(BRIGADE_KEY, safeBrigade).apply()
+        prefs.edit().putInt(PreferenceKeys.BRIGADE_KEY, safeBrigade).apply()
+        ShiftWidgetProvider.triggerUpdate(context)
     }
+
 }

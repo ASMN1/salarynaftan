@@ -2,4 +2,14 @@
 <resources>
 
     <style name="Theme.Salarynaftan" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Анимированная splash-тема для Android 12+ SplashScreen API -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#121212</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="windowSplashScreenAnimationDuration">1200</item>
+        <item name="windowSplashScreenIconBackgroundColor">#00E676</item>
+        <item name="postSplashScreenTheme">@style/Theme.Salarynaftan</item>
+    </style>
+
 </resources>

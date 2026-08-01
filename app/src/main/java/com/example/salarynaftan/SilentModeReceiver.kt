@@ -7,36 +7,45 @@ import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import java.time.LocalDate
-
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+private const val TAG = "SilentModeReceiver"
 class SilentModeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val audioManager =
-            context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val pendingResult = goAsync()
+        val appContext = context.applicationContext
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                handleReceive(appContext, intent)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
 
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+    private fun handleReceive(context: Context, intent: Intent) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
-        val prefs = context.getSharedPreferences("auto_silence_prefs", Context.MODE_PRIVATE)
-
+        val prefs = context.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, Context.MODE_PRIVATE)
         val action = intent.action
 
-        val hasDndPermission = if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-            notificationManager != null
-        ) {
+        val hasDndPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
             notificationManager.isNotificationPolicyAccessGranted
         } else {
             true
         }
 
-        // 1. Автоматический перезапуск (зацикливание) таймеров на следующий день
-        if (action == "com.example.salarynaftan.ACTION_SILENT_ON" || action == "com.example.salarynaftan.ACTION_SILENT_OFF") {
-            val isEnabled = prefs.getBoolean("auto_silence_enabled", false)
-            val startTime = prefs.getString("auto_silence_start", "08:00") ?: "08:00"
-            val endTime = prefs.getString("auto_silence_end", "16:00") ?: "16:00"
-
+        // 1. Автоматический перезапуск таймеров на следующий день
+        if (action == PreferenceKeys.ACTION_SILENT_ON || action == PreferenceKeys.ACTION_SILENT_OFF) {
+            val isEnabled = prefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)
+            val startTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
+            val endTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
             if (isEnabled) {
-                AlarmScheduler(context).updateAutoSilenceAlarms(true, startTime, endTime)
+                AlarmScheduler(context, SettingsManager(context)).updateAutoSilenceAlarms(true, startTime, endTime)
             }
         }
 
@@ -48,39 +57,48 @@ class SilentModeReceiver : BroadcastReceiver() {
                 ShiftSchedule.shiftFor(yesterday, currentBrigade) == ShiftType.NIGHT
 
         try {
-            if (action == "com.example.salarynaftan.ACTION_SILENT_ON") {
-                // Включаем тишину ТОЛЬКО если сегодня отсыпной
-                if (isOtsypnoy) {
-                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING)
-                    val currentRingerMode = audioManager.ringerMode
+            if (action == PreferenceKeys.ACTION_SILENT_ON) {
+                if (isOtsypnoy && hasDndPermission) {
+                    // Сохраняем текущий режим уведомлений
+                    val currentFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        notificationManager?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
+                    } else {
+                        // Для старых версий используем ringerMode
+                        audioManager.ringerMode
+                    }
 
-                    // Сохраняем настройки
                     prefs.edit()
-                        .putInt("saved_volume", currentVolume)
-                        .putInt("saved_ringer_mode", currentRingerMode)
+                        .putInt(PreferenceKeys.KEY_SAVED_INTERRUPTION_FILTER, currentFilter)
+                        .putBoolean(PreferenceKeys.KEY_WAS_SILENCED_TODAY, true)
                         .apply()
 
-                    // Включаем режим "Не беспокоить" (Без звука)
-                    if (hasDndPermission) {
-                        audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                    // Включаем полную тишину (без звука и вибрации)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
                     } else {
-                        audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+                        // Fallback для старых версий
+                        audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
                     }
                 }
-            } else if (action == "com.example.salarynaftan.ACTION_SILENT_OFF") {
-                // Возвращаем звук
-                val savedVolume = prefs.getInt("saved_volume", -1)
-                val savedRingerMode = prefs.getInt("saved_ringer_mode", AudioManager.RINGER_MODE_NORMAL)
+            } else if (action == PreferenceKeys.ACTION_SILENT_OFF) {
+                val wasSilenced = prefs.getBoolean(PreferenceKeys.KEY_WAS_SILENCED_TODAY, false)
+                if (wasSilenced && hasDndPermission) {
+                    val savedFilter = prefs.getInt(PreferenceKeys.KEY_SAVED_INTERRUPTION_FILTER, NotificationManager.INTERRUPTION_FILTER_ALL)
 
-                if (hasDndPermission) {
-                    // Возвращаем режим только если он всё ещё "Без звука" (пользователь сам его не менял)
-                    if (audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT) {
-                        audioManager.ringerMode = savedRingerMode
+                    // Восстанавливаем предыдущий режим, только если текущий всё ещё "Без звука"
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                        val currentFilter = notificationManager.currentInterruptionFilter
+                        if (currentFilter == NotificationManager.INTERRUPTION_FILTER_NONE) {
+                            notificationManager.setInterruptionFilter(savedFilter)
+                        }
+                    } else {
+                        // Fallback для старых версий
+                        if (audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT) {
+                            audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                        }
                     }
-                }
 
-                if (savedVolume != -1 && audioManager.getStreamVolume(AudioManager.STREAM_RING) == 0) {
-                    audioManager.setStreamVolume(AudioManager.STREAM_RING, savedVolume, 0)
+                    prefs.edit().putBoolean(PreferenceKeys.KEY_WAS_SILENCED_TODAY, false).apply()
                 }
             }
         } catch (e: SecurityException) {

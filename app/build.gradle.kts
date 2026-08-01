@@ -1,75 +1,79 @@
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.example.salarynaftan"
-
-    // ИСПРАВЛЕНИЕ 1: Переводим сборку на SDK 35
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.salarynaftan"
-        minSdk = 24
-        // ИСПРАВЛЕНИЕ 2: Поднимаем targetSdk до 35
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+    }
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-        isCoreLibraryDesugaringEnabled = true
-    }
+
     buildFeatures {
         compose = true
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
 dependencies {
-    // Жестко прописываем стабильные версии (до появления бага с PictureInPictureProvider)
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.activity:activity-ktx:1.8.2")
-    implementation("androidx.activity:activity-compose:1.8.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    // Compose BOM – задаёт версии compose-библиотек
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation(composeBom)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.animation:animation")
 
-    // Compose BOM и UI библиотеки
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
+    // Activity & Lifecycle
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
 
-    // Тестирование
-    testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
+    // Core
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // Отладочные библиотеки (Debug)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-}
+    // Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-configurations.all {
-    resolutionStrategy {
-        force("androidx.core:core-ktx:1.15.0")
-        force("androidx.core:core:1.15.0")
-        force("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-        force("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    }
+    // Koin (внедрение зависимостей)
+    implementation("io.insert-koin:koin-android:4.0.0")
+    implementation("io.insert-koin:koin-compose:4.0.0")
+    implementation("io.insert-koin:koin-core:4.0.0")
+    implementation("io.insert-koin:koin-compose-viewmodel:4.0.0")
+
+
+    // ML Kit Text Recognition (OCR) — встроенная модель (поддерживает русский)
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // Тесты (необязательно, но оставь)
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 }

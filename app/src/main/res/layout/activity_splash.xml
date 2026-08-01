@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:gravity="center">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <ImageView
+            android:id="@+id/ivLogo"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:src="@drawable/ic_splash"
+            android:contentDescription="Логотип" />
+
+        <TextView
+            android:id="@+id/tvSplashTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ОАО &quot;Нафтан&quot;"
+            android:textColor="#00E676"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:id="@+id/tvSplashSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Расчёт зарплаты и график смен"
+            android:textColor="#888888"
+            android:textSize="14sp"
+            android:layout_marginTop="4dp" />
+
+        <ProgressBar
+            android:id="@+id/splashProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:indeterminate="true"
+            android:layout_marginTop="32dp"
+            android:indeterminateTint="#00E676" />
+
+    </LinearLayout>
+
+</RelativeLayout>
