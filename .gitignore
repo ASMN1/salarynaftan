@@ -25,3 +25,8 @@ backup_src_pre_packages/
 salary_extract/
 norms.csv
 salary.xlsx
+
+# Побочные артефакты сборки
+build_output.txt
+build_audit.log
+build_fix.log
