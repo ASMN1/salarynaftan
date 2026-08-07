@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import com.example.salarynaftan.di.appModule
+import com.example.salarynaftan.util.FileLogTree
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import timber.log.Timber
@@ -13,18 +14,38 @@ import timber.log.Timber
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
-        // В релизе — тоже пишем логи (без дублирования DebugTree), чтобы
-        // потери данных/ошибки экспорта не «молчали» (п.6.1).
-        else Timber.plant(Timber.DebugTree())
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        } else {
+            // В релизе DebugTree бесполезен (logcat недоступен пользователю),
+            // поэтому пишем логи в файл для прод-диагностики крашей и ошибок.
+            Timber.plant(FileLogTree(this))
+        }
         installGlobalExceptionHandler()
         startKoin {
             androidContext(this@App)
             modules(appModule)
         }
         createAlarmNotificationChannel()
-        syncBrigadeForWidget()
-        syncShiftScheduleAnchor()
+        // Прогрев DataStore (бригада, anchor-дата) уходит в фоновый поток:
+        // иначе первый запуск блокирует Main через runBlocking и рискует ANR.
+        warmUpSettingsInBackground()
+    }
+
+    /** Прогревает настройки (базовая дата цикла, бригада виджета) в фоне. */
+    private fun warmUpSettingsInBackground() {
+        Thread {
+            try {
+                syncBrigadeForWidget()
+                syncShiftScheduleAnchor()
+            } catch (_: Exception) {
+                // Невалидные настройки не должны ронять приложение.
+            }
+        }.apply {
+            name = "salarynaftan-warmup"
+            isDaemon = true
+            start()
+        }
     }
 
     /**

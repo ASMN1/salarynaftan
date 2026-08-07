@@ -138,6 +138,14 @@ object SalaryCalculator {
     }
 
     /**
+     * Единая точка расчёта аванса за месяц (деньги). Используется на экране
+     * «График» (MonthlyStatsCard) и в PDF-экспортёрах, чтобы формула
+     * (оклад / норма × смен-до-15-го × 8 ч) существовала в одном месте.
+     */
+    fun advanceAmount(okladBase: Double, normHours: Double, shiftCountBefore15: Int): Double =
+        if (normHours > 0) (okladBase / normHours) * shiftCountBefore15 * SHIFT_HOURS else 0.0
+
+    /**
      * Полный расчёт зарплаты за месяц.
      *
      * @param year       год расчёта
@@ -201,7 +209,7 @@ object SalaryCalculator {
         val childrenDeduction = VYCHET_NA_ODNOGO_REBENKA * monthData.childrenCount
         val podohodnyBase = maxOf(0.0, dirty - childrenDeduction - mmDeti)
         val podohodny = podohodnyBase * INCOME_TAX_RATE
-        val avans = (inputs.okladBase / normVal) * advShiftsVal * SHIFT_HOURS
+        val avans = advanceAmount(inputs.okladBase, normVal, advShiftsVal.toInt())
         val totalClean = dirty - fszn - prof - podohodny -
                 monthData.gazetaInput - monthData.pozhertvovanjaInput -
                 monthData.subbotnikInput - monthData.stravitaInput
@@ -230,21 +238,6 @@ object SalaryCalculator {
             error = null
         )
     }
-
-    // ---- Совместимость: адаптер из SalaryUiState в MonthInput (используется ViewModel) ----
-
-    fun monthInputFrom(state: SalaryUiState): MonthInput = MonthInput(
-        normHours = parseNonNegative(state.normHours),
-        prazdnHours = parseNonNegative(state.prazdnHours),
-        zaOtsutstvuushego = parseNonNegative(state.zaOtsutstvuushego),
-        kvartalka = parseNonNegative(state.kvartalka),
-        gazetaInput = parseNonNegative(state.gazetaInput),
-        pozhertvovanjaInput = parseNonNegative(state.pozhertvovanjaInput),
-        subbotnikInput = parseNonNegative(state.subbotnikInput),
-        mmDetiCount = parseNonNegative(state.mmDetiCountInput),
-        childrenCount = parseNonNegative(state.childrenCountInput),
-        stravitaInput = parseNonNegative(state.stravitaInput)
-    )
 }
 
 /**

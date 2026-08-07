@@ -145,4 +145,9 @@ class SettingsManager(context: Context) {
     fun getVolumeRampSec(): Int = dataStore.getVolumeRampSec()
 
     fun saveVolumeRampSec(sec: Int) = dataStore.saveVolumeRampSec(sec)
+
+    // ----- ПРЕД-НАПОМИНАНИЕ О СМЕНЕ (мин до сигнала, 0 = выключено) -----
+    fun getShiftReminderMinutes(): Int = dataStore.getShiftReminderMinutes()
+
+    fun saveShiftReminderMinutes(minutes: Int) = dataStore.saveShiftReminderMinutes(minutes)
 }

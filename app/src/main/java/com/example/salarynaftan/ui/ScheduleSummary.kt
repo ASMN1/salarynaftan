@@ -77,7 +77,8 @@ fun MonthlyStatsCard(
     val nightHoursTotal = (nightCount * 8.0) + (dayCount * 2.0)
     val overtimeHours = maxOf(0.0, factHours - normVal)
     val salary = settingsManager.getSalary()
-    val advanceAmount = if (normVal > 0) (salary / normVal) * shiftsBefore15 * 8.0 else 0.0
+    // Единая формула аванса из SalaryCalculator (как в расчёте зарплаты).
+    val advanceAmount = SalaryCalculator.advanceAmount(salary, normVal, shiftsBefore15)
 
     Card(
         modifier = Modifier

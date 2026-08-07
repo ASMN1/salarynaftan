@@ -39,4 +39,15 @@ object PreferenceKeys {
     const val ACTION_SILENT_ON = "com.example.salarynaftan.ACTION_SILENT_ON"
 
     const val ACTION_SILENT_OFF = "com.example.salarynaftan.ACTION_SILENT_OFF"
+
+    // Пред-напоминание о смене (п.6.7): за сколько минут до сигнала показывать
+    // уведомление-напоминание. Значение 0 — напоминание выключено.
+    const val SHIFT_REMINDER_MINUTES = "shift_reminder_minutes"
+
+    const val ACTION_SHIFT_REMINDER = "com.example.salarynaftan.ACTION_SHIFT_REMINDER"
+
+    // Константы для данных, передаваемых в Intent пред-напоминания.
+    const val EXTRA_REMINDER_TITLE = "reminder_title"
+    const val EXTRA_REMINDER_SHIFT = "reminder_shift"
+    const val EXTRA_REMINDER_TIME = "reminder_time"
 }

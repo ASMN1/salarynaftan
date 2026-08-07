@@ -116,6 +116,15 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".ShiftReminderReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.salarynaftan.ACTION_SHIFT_REMINDER" />
+            </intent-filter>
+        </receiver>
+
         <!-- Виджет смены -->
         <receiver
             android:name=".ShiftWidgetProvider"

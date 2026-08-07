@@ -140,6 +140,24 @@ fun parseNonNegative(input: String): Double =
     input.replace(',', '.').replace(' ', '.')
         .toDoubleOrNull()?.takeIf { it >= 0 } ?: 0.0
 
+/**
+ * Адаптер из UI-состояния в входные данные расчёта. Размещён рядом с
+ * SalaryUiState (тот же файл), чтобы чистая логика SalaryCalculator не
+ * зависела от UI-структуры.
+ */
+fun monthInputFrom(state: SalaryUiState): SalaryCalculator.MonthInput = SalaryCalculator.MonthInput(
+    normHours = parseNonNegative(state.normHours),
+    prazdnHours = parseNonNegative(state.prazdnHours),
+    zaOtsutstvuushego = parseNonNegative(state.zaOtsutstvuushego),
+    kvartalka = parseNonNegative(state.kvartalka),
+    gazetaInput = parseNonNegative(state.gazetaInput),
+    pozhertvovanjaInput = parseNonNegative(state.pozhertvovanjaInput),
+    subbotnikInput = parseNonNegative(state.subbotnikInput),
+    mmDetiCount = parseNonNegative(state.mmDetiCountInput),
+    childrenCount = parseNonNegative(state.childrenCountInput),
+    stravitaInput = parseNonNegative(state.stravitaInput)
+)
+
 fun parseMissedDays(input: String): Set<Int> =
     input.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }.toSet()
 

@@ -34,6 +34,9 @@ class SalaryCalculatorViewModel(
         /** Максимально допустимая норма часов в месяц для валидации ввода. */
         const val MAX_NORM_HOURS = 500
 
+        /** Минимально возможная норма часов в месяц (защита от деления на крошечную норму). */
+        const val MIN_NORM_HOURS = 40
+
         /** Максимальное число детей для вычета. */
         const val MAX_CHILDREN = 20
 
@@ -49,16 +52,24 @@ class SalaryCalculatorViewModel(
     init {
         val savedIndex = savedStateHandle.get<Int>("selectedMonthIndex")
             ?: settingsManager.getSelectedMonthIndex()
+        // Текущий системный год может выходить за диапазон таблицы норм
+        // (supportedYears); кладём выбор в поддерживаемый диапазон.
+        val supported = MonthlyNorms.supportedYears()
         val savedYear = savedStateHandle.get<Int>("selectedYear")
             ?: java.time.LocalDate.now().year
+        val year = savedYear.coerceIn(supported.first, supported.last)
         _uiState.update {
-            it.copy(selectedMonthIndex = savedIndex, selectedYear = savedYear)
+            it.copy(selectedMonthIndex = savedIndex, selectedYear = year)
         }
-        loadMonthData(savedIndex, savedYear)
+        loadMonthData(savedIndex, year)
     }
 
     fun selectMonth(index: Int) {
-        if (index in months.indices) {
+        if (index in months.indices && index != _uiState.value.selectedMonthIndex) {
+            // Сохраняем текущий ввод до переключения, чтобы начисления/вычеты
+            // не терялись, если пользователь переключил месяц без «Сохранить»
+            // (BUG: потеря несохранённых начислений).
+            viewModelScope.launch { saveCurrentMonthData() }
             savedStateHandle["selectedMonthIndex"] = index
             settingsManager.saveSelectedMonthIndex(index)
             _uiState.update { it.copy(selectedMonthIndex = index) }
@@ -67,9 +78,12 @@ class SalaryCalculatorViewModel(
     }
 
     fun selectYear(year: Int) {
-        savedStateHandle["selectedYear"] = year
-        _uiState.update { it.copy(selectedYear = year) }
-        loadMonthData(_uiState.value.selectedMonthIndex, year)
+        if (year != _uiState.value.selectedYear) {
+            viewModelScope.launch { saveCurrentMonthData() }
+            savedStateHandle["selectedYear"] = year
+            _uiState.update { it.copy(selectedYear = year) }
+            loadMonthData(_uiState.value.selectedMonthIndex, year)
+        }
     }
 
     // Параметры месяц/год передаются явно, чтобы быстрые переключения
@@ -151,6 +165,7 @@ class SalaryCalculatorViewModel(
             val mmDeti = parseNonNegative(state.mmDetiCountInput)
             if (norm <= 0) errors.add("Норма часов должна быть больше нуля")
             if (norm > MAX_NORM_HOURS) errors.add("Норма часов слишком велика (max $MAX_NORM_HOURS)")
+            if (norm < MIN_NORM_HOURS) errors.add("Норма часов слишком мала (мин $MIN_NORM_HOURS)")
             if (prazdn > norm && norm > 0) errors.add("Праздничных часов не может быть больше нормы")
             if (children > MAX_CHILDREN) errors.add("Некорректное число детей (max $MAX_CHILDREN)")
             if (mmDeti > MAX_MM_DETI) errors.add("Некорректное число базовых величин на детей (max $MAX_MM_DETI)")
@@ -208,7 +223,7 @@ class SalaryCalculatorViewModel(
         return SalaryCalculator.calculate(
             year = year,
             monthIndex = monthIndex,
-            monthData = SalaryCalculator.monthInputFrom(state),
+            monthData = monthInputFrom(state),
             inputs = inputs,
             pensionPercent = settingsManager.getPpsPercent()
         )

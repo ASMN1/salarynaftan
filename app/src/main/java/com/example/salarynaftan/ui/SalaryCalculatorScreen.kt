@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -37,15 +38,11 @@ fun SalaryCalculatorScreen(
     val selectedFilterYear by historyManager.selectedFilterYear.collectAsState()
     val primary = MaterialTheme.colorScheme.primary
 
-    // История грузится при показе экрана (scope экрана) и дополнительно —
-    // при возврате на экран (ON_RESUME), чтобы подхватывать изменения,
-    // сделанные из другого места (п.4.6).
-    LaunchedEffect(Unit) {
-        historyManager.refresh()
-    }
+    // История грузится при показе экрана и при возврате на вкладку (ON_RESUME),
+    // чтобы подхватывать изменения, сделанные из другого места (п.4.6).
+    // Одна точка загрузки: старт = тик 1, далее каждый ON_RESUME инкрементирует.
+    var resumeTick by remember { mutableIntStateOf(1) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    // Перезагрузка истории при возврате на вкладку (ON_RESUME).
-    var resumeTick by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) resumeTick++
@@ -54,7 +51,7 @@ fun SalaryCalculatorScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(resumeTick) {
-        if (resumeTick > 0) historyManager.refresh()
+        historyManager.refresh()
     }
 
     Column(
@@ -83,10 +80,12 @@ fun SalaryCalculatorScreen(
             title = "Оклад и коэффициенты",
             initiallyExpanded = true
         ) {
-            var salaryText by remember { mutableStateOf(MoneyFormatter.format(settings.getSalary())) }
-            var premiumText by remember { mutableStateOf(percentInput(settings.getPremiumCoef())) }
-            var stazhText by remember { mutableStateOf(percentInput(settings.getStazhKoef())) }
-            var ppsText by remember { mutableStateOf(String.format(Locale.US, "%.1f", settings.getPpsPercent())) }
+            // rememberSaveable — чтобы введённые, но не сохранённые значения
+            // оклада/коэффициентов переживали поворот экрана (потеря ввода).
+            var salaryText by rememberSaveable { mutableStateOf(MoneyFormatter.format(settings.getSalary())) }
+            var premiumText by rememberSaveable { mutableStateOf(percentInput(settings.getPremiumCoef())) }
+            var stazhText by rememberSaveable { mutableStateOf(percentInput(settings.getStazhKoef())) }
+            var ppsText by rememberSaveable { mutableStateOf(String.format(Locale.US, "%.1f", settings.getPpsPercent())) }
             var saveError by remember { mutableStateOf<String?>(null) }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -41,6 +41,11 @@ class AlarmSoundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var volumeRampJob: Job? = null
 
+    // Защита от повторного старта звонка: onNewIntent в AlarmRingingActivity
+    // или повторный onStartCommand не должны перезапускать звук/вибрацию,
+    // давая наложение/зацикливание. Сбрасывается в stopRinging().
+    @Volatile private var isRinging = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -51,6 +56,10 @@ class AlarmSoundService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
+                if (isRinging) {
+                    // Уже звеним — игнорируем повторный запуск (дубль).
+                    return START_STICKY
+                }
                 val uri = intent?.getStringExtra(EXTRA_RINGTONE_URI)?.let {
                     try { android.net.Uri.parse(it) } catch (_: Exception) { null }
                 } ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
@@ -82,6 +91,9 @@ class AlarmSoundService : Service() {
         startForeground(NOTIFICATION_ID, notification)
 
         startRinging(uri, targetVolume, rampSec)
+        // Флаг ставим ПОСЛЕ startRinging (он внутри сбрасывает isRinging
+        // через stopRinging), чтобы guard «уже звеним» работал корректно.
+        isRinging = true
     }
 
     private fun startRinging(uri: android.net.Uri, targetVolume: Float, rampSec: Int) {
@@ -148,6 +160,7 @@ class AlarmSoundService : Service() {
         volumeRampJob?.cancel()
         try { mediaPlayer.let { if (it.isPlaying) it.stop(); it.release() } } catch (_: Exception) { }
         vibrator?.cancel()
+        isRinging = false
     }
 
     override fun onDestroy() {

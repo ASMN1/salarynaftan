@@ -26,7 +26,11 @@ class DataStoreManager(context: Context) {
 
     // Пишущие операции уходят в фоновый scope — раньше они блокировали
     // вызывающий поток через runBlocking (в т.ч. Main) на каждом сохранении.
-    private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // limitedParallelism(1) гарантирует последовательное выполнение записей
+    // в порядке вызовов, устраняя гонку, когда быстрые сохранения приходили
+    // в произвольном порядке и могли «перезаписать» более свежее значение
+    // более старым (BUG: потеря последней записи).
+    private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     // Каждый ключ инициализируется из DataStore ровно один раз.
     private val loadedKeys = mutableSetOf<Preferences.Key<*>>()
@@ -52,6 +56,7 @@ class DataStoreManager(context: Context) {
     @Volatile private var cacheUiScale = DEFAULT_UI_SCALE
     @Volatile private var cacheVolumeRampSec = DEFAULT_VOLUME_RAMP_SEC
     @Volatile private var cacheAnchorDate = DEFAULT_ANCHOR_DATE
+    @Volatile private var cacheShiftReminderMinutes = DEFAULT_SHIFT_REMINDER_MINUTES
 
     companion object {
         private val KEY_VOLUME = floatPreferencesKey("alarm_volume")
@@ -74,6 +79,7 @@ class DataStoreManager(context: Context) {
         private val KEY_UI_SCALE = floatPreferencesKey("ui_scale")
         private val KEY_VOLUME_RAMP_SEC = intPreferencesKey("volume_ramp_sec")
         private val KEY_ANCHOR_DATE = stringPreferencesKey("anchor_date")
+        private val KEY_SHIFT_REMINDER_MINUTES = intPreferencesKey("shift_reminder_minutes")
         // Версия данных настроек: при изменении структуры ключей увеличиваем
         // SCHEMA_VERSION и добавляем соответствующий шаг миграции (№9).
         private val KEY_DATA_VERSION = intPreferencesKey("data_version")
@@ -103,6 +109,9 @@ class DataStoreManager(context: Context) {
         private const val MIN_VOLUME_RAMP_SEC = 2
         private const val MAX_VOLUME_RAMP_SEC = 30
         private const val DEFAULT_ANCHOR_DATE = "2026-01-01"
+        private const val DEFAULT_SHIFT_REMINDER_MINUTES = 0
+        private const val MIN_SHIFT_REMINDER_MINUTES = 0
+        private const val MAX_SHIFT_REMINDER_MINUTES = 180
 
         // Текущая версия схемы настроек. Начинаем с 2, так как первая версия
         // существовала без этого ключа; значение отсутствует → версия 1.
@@ -239,6 +248,17 @@ class DataStoreManager(context: Context) {
         val safe = isoDate.takeIf { it.isNotBlank() } ?: DEFAULT_ANCHOR_DATE
         cacheAnchorDate = safe
         writeString(KEY_ANCHOR_DATE, safe)
+    }
+
+    // ---- Пред-напоминание о смене (минут до сигнала, 0 = выключено) ----
+    fun getShiftReminderMinutes(): Int {
+        ensure(KEY_SHIFT_REMINDER_MINUTES) { cacheShiftReminderMinutes = readInt(KEY_SHIFT_REMINDER_MINUTES, DEFAULT_SHIFT_REMINDER_MINUTES) }
+        return cacheShiftReminderMinutes
+    }
+    fun saveShiftReminderMinutes(minutes: Int) {
+        val v = minutes.coerceIn(MIN_SHIFT_REMINDER_MINUTES, MAX_SHIFT_REMINDER_MINUTES)
+        cacheShiftReminderMinutes = v
+        writeInt(KEY_SHIFT_REMINDER_MINUTES, v)
     }
 
     // ---- Morning color ----

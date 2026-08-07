@@ -377,6 +377,62 @@ fun SettingsScreen(
             }
         }
 
+        // ---- 5.5 ПРЕД-НАПОМИНАНИЕ О СМЕНЕ ----
+        val reminderEnabled = remember { mutableStateOf(settings.getShiftReminderMinutes() > 0) }
+        val reminderMinutes = remember { mutableStateOf(settings.getShiftReminderMinutes()) }
+        PremiumSettingCard(
+            icon = "⏰",
+            title = "Напоминать о смене",
+            description = if (reminderEnabled.value) "За ${reminderMinutes.value} мин" else "Выключено"
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (reminderEnabled.value) "Напоминание за ${reminderMinutes.value} мин" else "Выключено",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                PremiumSwitch(
+                    checked = reminderEnabled.value,
+                    onCheckedChange = { checked ->
+                        reminderEnabled.value = checked
+                        reminderMinutes.value = if (checked) reminderMinutes.value.coerceAtLeast(5) else 0
+                        settings.saveShiftReminderMinutes(reminderMinutes.value)
+                        // Применяем новое значение к уже запланированным сменным
+                        // будильникам текущей бригады, иначе изменение вступит в
+                        // силу только при следующем перепланировании (п.6.7).
+                        scheduler.rescheduleAllAlarmsForBrigade(settings.getBrigade())
+                    },
+                    trackColor = primary
+                )
+            }
+            if (reminderEnabled.value) {
+                Slider(
+                    value = reminderMinutes.value.toFloat(),
+                    onValueChange = {
+                        reminderMinutes.value = it.toInt().coerceIn(5, 180)
+                        settings.saveShiftReminderMinutes(reminderMinutes.value)
+                    },
+                    onValueChangeFinished = {
+                        scheduler.rescheduleAllAlarmsForBrigade(settings.getBrigade())
+                    },
+                    valueRange = 5f..180f,
+                    steps = 34,
+                    colors = SliderDefaults.colors(thumbColor = primary, activeTrackColor = primary),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(22.dp)
+                )
+                Text(
+                    "Показывать уведомление за выбранное время до начала смены",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                )
+            }
+        }
+
         // ---- 6. О ПРИЛОЖЕНИИ ----
         PremiumSettingCard(
             icon = "ℹ️",

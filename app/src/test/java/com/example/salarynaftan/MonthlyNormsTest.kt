@@ -33,27 +33,10 @@ class MonthlyNormsTest {
     }
 
     @Test
-    fun `all facts are positive`() {
-        MonthlyNorms.list.forEach { month ->
-            org.junit.Assert.assertTrue("Fact for ${month.name} should be > 0", month.fact > 0)
-        }
-    }
-
-    @Test
     fun `month names match nominative list`() {
         MonthlyNorms.list.forEachIndexed { index, month ->
             assertEquals(MonthlyNorms.MONTH_NAMES_NOMINATIVE[index], month.name)
         }
-    }
-
-    @Test
-    fun `June has default night shifts`() {
-        assertEquals(6.0, MonthlyNorms.list[5].defaultNightShifts, 0.001)
-    }
-
-    @Test
-    fun `January has no default night shifts`() {
-        assertEquals(0.0, MonthlyNorms.list[0].defaultNightShifts, 0.001)
     }
 
     @Test

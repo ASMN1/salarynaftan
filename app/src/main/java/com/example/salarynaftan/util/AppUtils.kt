@@ -53,11 +53,25 @@ fun shareFile(
     }
 }
 
-/** Создаёт временную директорию для экспорта. */
+/** Создаёт временную директорию для экспорта и чистит старые файлы. */
 fun getExportDir(context: Context): File {
     val dir = File(context.cacheDir, "exports")
     dir.mkdirs()
+    // Экспорт генерирует файлы с каждым обращением (PDF/ICS/CSV/картинки),
+    // которые копятся в кэше. Удаляем файлы старше суток, чтобы кэш
+    // не переполнялся при частом экспорте (в т.ч. «весь год»).
+    cleanOldFiles(dir, maxAgeMillis = 24L * 60 * 60 * 1000)
     return dir
+}
+
+/** Удаляет файлы в [dir] старше [maxAgeMillis]. */
+private fun cleanOldFiles(dir: File, maxAgeMillis: Long) {
+    val now = System.currentTimeMillis()
+    dir.listFiles()?.forEach { file ->
+        if (file.isFile && now - file.lastModified() > maxAgeMillis) {
+            file.delete()
+        }
+    }
 }
 
 /**

@@ -57,11 +57,12 @@ class WidgetConfigureActivity : AppCompatActivity() {
                 text = brigadeLabels[i - 1]
                 textSize = 16f
                 setOnClickListener {
-                    // Save selected brigade to SharedPreferences
-                    prefs.edit().putInt(PreferenceKeys.BRIGADE_KEY, i).apply()
-
-                    // Update the widget
-                    ShiftWidgetProvider.triggerUpdate(this@WidgetConfigureActivity)
+                    // Единый источник бригады: SettingsManager.setBrigade обновляет
+                    // и DataStore (приложение), и SharedPreferences (виджет), а также
+                    // сам триггерит обновление виджета. Раньше писали только в
+                    // SharedPreferences, из-за чего приложение оставалось со старой
+                    // бригадой до перезапуска (рассинхрон источником).
+                    SettingsManager(this@WidgetConfigureActivity).setBrigade(i)
 
                     // Return OK
                     val resultValue = Intent().apply {

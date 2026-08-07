@@ -33,7 +33,9 @@ fun MonthSelector(
     val months = MonthlyNorms.list
     var expanded by remember { mutableStateOf(false) }
     var yearExpanded by remember { mutableStateOf(false) }
-    val years = (2026..2035).toList()
+    // Единый диапазон лет с проверенными нормами из таблицы (MonthlyNorms),
+    // чтобы не предлагать годы без точного производственного календаря.
+    val years = MonthlyNorms.supportedYears().toList()
     val primary = MaterialTheme.colorScheme.primary
 
     PremiumSectionCard {

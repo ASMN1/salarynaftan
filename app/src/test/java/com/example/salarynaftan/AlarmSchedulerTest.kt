@@ -3,11 +3,13 @@ package com.example.salarynaftan
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.spyk
@@ -18,6 +20,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+/**
+ * Тесты планировщиков будильников. После разбиения AlarmScheduler (п.3.3)
+ * сменная логика живет в ShiftAlarmScheduler, а обычная — в RegularAlarmScheduler.
+ * Проверяем их напрямую.
+ */
 class AlarmSchedulerTest {
 
     private val context = mockk<Context>()
@@ -29,7 +36,14 @@ class AlarmSchedulerTest {
     @Before
     fun setUp() {
         mockkStatic(PendingIntent::class)
+        mockkConstructor(Intent::class)
         every { PendingIntent.getBroadcast(any(), any(), any(), any()) } returns pendingIntent
+        val relaxedIntent = mockk<Intent>(relaxed = true)
+        every { anyConstructed<Intent>().setAction(any()) } returns relaxedIntent
+        // putExtra имеет много перегрузок; типы указываем явно, чтобы MockK
+        // мог выбрать нужную (в планировщиках используются String и Int).
+        every { anyConstructed<Intent>().putExtra(any<String>(), any<String>()) } returns relaxedIntent
+        every { anyConstructed<Intent>().putExtra(any<String>(), any<Int>()) } returns relaxedIntent
         every { context.getSystemService(Context.ALARM_SERVICE) } returns alarmManager
         every { context.getSharedPreferences(PreferenceKeys.ALARM_PREFS, Context.MODE_PRIVATE) } returns prefs
         every { prefs.edit() } returns editor
@@ -37,11 +51,16 @@ class AlarmSchedulerTest {
         every { editor.putString(any(), any()) } returns editor
     }
 
-    private fun scheduler(): AlarmScheduler {
-        val s = spyk(AlarmScheduler(context))
-        // Внутренние методы, которые вызывают Android-заглушки (PendingIntent/Intent),
+    private fun shiftSched(): ShiftAlarmScheduler {
+        val s = spyk(ShiftAlarmScheduler(context))
+        // Методы, которые обращаются к Android-заглушкам (PendingIntent/Intent),
         // недоступны в unit-тесте — заменяем их заглушками.
         every { s.scheduleSingleShiftAlarm(any(), any(), any(), any()) } just Runs
+        return s
+    }
+
+    private fun regularSched(): RegularAlarmScheduler {
+        val s = spyk(RegularAlarmScheduler(context))
         every { s.scheduleSingleRegularAlarm(any()) } just Runs
         every { s.cancelSingleRegularAlarm(any()) } just Runs
         return s
@@ -52,20 +71,20 @@ class AlarmSchedulerTest {
     @Test
     fun `getAlarmTimesForShift returns default when nothing saved`() {
         every { prefs.getString(any(), any()) } returns null
-        val times = scheduler().getAlarmTimesForShift(ShiftType.MORNING, 1)
+        val times = shiftSched().getAlarmTimesForShift(ShiftType.MORNING, 1)
         assertEquals(listOf("06:00"), times)
     }
 
     @Test
     fun `getAlarmTimesForShift returns saved comma-separated times`() {
         every { prefs.getString(any(), any()) } returns "06:00,07:30"
-        val times = scheduler().getAlarmTimesForShift(ShiftType.NIGHT, 1)
+        val times = shiftSched().getAlarmTimesForShift(ShiftType.NIGHT, 1)
         assertEquals(listOf("06:00", "07:30"), times)
     }
 
     @Test
     fun `saveAlarmTimesForShift persists joined times under prefixed key`() {
-        scheduler().saveAlarmTimesForShift(ShiftType.DAY, listOf("14:00", "16:00"), 2)
+        shiftSched().saveAlarmTimesForShift(ShiftType.DAY, listOf("14:00", "16:00"), 2)
         val expectedKey = "${PreferenceKeys.SHIFT_TIMES_PREFIX}2_DAY"
         verify { editor.putString(expectedKey, "14:00,16:00") }
         verify { editor.apply() }
@@ -74,7 +93,7 @@ class AlarmSchedulerTest {
     @Test
     fun `scheduleAlarmsForShift sets enabled flag and returns count`() {
         every { prefs.getString(any(), any()) } returns "06:00,07:30"
-        val n = scheduler().scheduleAlarmsForShift(ShiftType.MORNING, 1)
+        val n = shiftSched().scheduleAlarmsForShift(ShiftType.MORNING, 1)
 
         assertEquals(2, n)
         verify { editor.putBoolean("${PreferenceKeys.SHIFT_ALARM_ENABLED_PREFIX}1_MORNING", true) }
@@ -82,22 +101,22 @@ class AlarmSchedulerTest {
 
     @Test
     fun `cancelAlarmsForShift clears enabled flag`() {
-        scheduler().cancelAlarmsForShift(ShiftType.NIGHT, 3)
+        shiftSched().cancelAlarmsForShift(ShiftType.NIGHT, 3)
         verify { editor.putBoolean("${PreferenceKeys.SHIFT_ALARM_ENABLED_PREFIX}3_NIGHT", false) }
     }
 
     @Test
     fun `isAlarmScheduledForShift reads enabled flag`() {
         every { prefs.getBoolean(any(), any()) } returns true
-        assertTrue(scheduler().isAlarmScheduledForShift(ShiftType.DAY, 1))
+        assertTrue(shiftSched().isAlarmScheduledForShift(ShiftType.DAY, 1))
         every { prefs.getBoolean(any(), any()) } returns false
-        assertFalse(scheduler().isAlarmScheduledForShift(ShiftType.DAY, 1))
+        assertFalse(shiftSched().isAlarmScheduledForShift(ShiftType.DAY, 1))
     }
 
     @Test
     fun `rescheduleShiftAlarmAfterRing reschedules when enabled`() {
         every { prefs.getBoolean(any(), any()) } returns true
-        val s = scheduler()
+        val s = shiftSched()
         s.rescheduleShiftAlarmAfterRing(ShiftType.DAY, 1, 0, "14:00")
         verify { s.scheduleSingleShiftAlarm(ShiftType.DAY, 1, 0, "14:00") }
     }
@@ -105,7 +124,7 @@ class AlarmSchedulerTest {
     @Test
     fun `rescheduleShiftAlarmAfterRing does nothing when disabled`() {
         every { prefs.getBoolean(any(), any()) } returns false
-        val s = scheduler()
+        val s = shiftSched()
         s.rescheduleShiftAlarmAfterRing(ShiftType.DAY, 1, 0, "14:00")
         verify(exactly = 0) { s.scheduleSingleShiftAlarm(ShiftType.DAY, 1, 0, "14:00") }
     }
@@ -115,7 +134,7 @@ class AlarmSchedulerTest {
     @Test
     fun `getRegularAlarms returns defaults when nothing saved`() {
         every { prefs.getString(any(), any()) } returns null
-        val alarms = scheduler().getRegularAlarms()
+        val alarms = regularSched().getRegularAlarms()
         assertEquals(
             listOf(
                 RegularAlarm(1L, "07:30", false, "Утренний"),
@@ -128,7 +147,7 @@ class AlarmSchedulerTest {
     @Test
     fun `getRegularAlarms parses serialized alarms`() {
         every { prefs.getString(any(), any()) } returns "10|06:00|true|Будильник"
-        val alarms = scheduler().getRegularAlarms()
+        val alarms = regularSched().getRegularAlarms()
         assertEquals(listOf(RegularAlarm(10L, "06:00", true, "Будильник")), alarms)
     }
 
@@ -137,7 +156,7 @@ class AlarmSchedulerTest {
         val tricky = RegularAlarm(5L, "08:00", false, "Утро;вечер|день\\ночь")
         every { prefs.getString(any(), any()) } returns null
 
-        val s = scheduler()
+        val s = regularSched()
         s.saveRegularAlarms(listOf(tricky))
 
         val serialized = slot<String>()
@@ -155,7 +174,7 @@ class AlarmSchedulerTest {
             RegularAlarm(1L, "07:30", true, "Утро"),
             RegularAlarm(2L, "21:00", false, "Вечер")
         )
-        val s = scheduler()
+        val s = regularSched()
         s.saveRegularAlarms(alarms)
 
         verify { editor.putString(PreferenceKeys.REGULAR_ALARMS, any()) }
