@@ -1,4 +1,17 @@
 <resources>
     <string name="app_name">Календарь смен и Зарплата \"ОАО Нафтан\"</string>
     <string name="widget_description">Виджет текущей и следующей смены</string>
+
+    <!-- Заголовки главных экранов -->
+    <string name="schedule_title">График смен</string>
+    <string name="schedule_subtitle">Бригада · календарь · отпуска</string>
+    <string name="salary_title">Зарплата</string>
+    <string name="salary_subtitle">Расчёт за месяц с учётом смен</string>
+    <string name="alarms_title">Будильники</string>
+    <string name="alarms_subtitle">Сменные и обычные сигналы</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_subtitle">Тема, оформление и звук</string>
+
+    <!-- Диалог экспорта графика -->
+    <string name="export_schedule_title">📤 Экспорт графика</string>
 </resources>

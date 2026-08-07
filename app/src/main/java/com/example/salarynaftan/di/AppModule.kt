@@ -1,25 +1,36 @@
 package com.example.salarynaftan.di
 
-import android.app.Application
-import com.example.salarynaftan.SalaryCalculatorViewModel
-import com.example.salarynaftan.SettingsManager
-import com.example.salarynaftan.AlarmScheduler
-import com.example.salarynaftan.HistoryManager
-import com.example.salarynaftan.ColorSettingsManager
+import com.example.salarynaftan.*
+import com.example.salarynaftan.data.SalaryRepository
+import com.example.salarynaftan.export.HistoryExporter
+import com.example.salarynaftan.ui.SalaryCalculatorViewModel
+import com.example.salarynaftan.ui.SettingsViewModel
 import org.koin.dsl.module
 import org.koin.core.module.dsl.viewModel
+import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidApplication
 
 val appModule = module {
     single { SettingsManager(get()) }
-    single { AlarmScheduler(get(), get()) }
-    single { HistoryManager(get()) }
+    single { AlarmScheduler(get()) }
+    single { HistoryExporter(androidContext()) }
+    single { HistoryManager(get(), get()) }
     single { ColorSettingsManager(get()) }
+    single { SalaryRepository(androidContext()) }
 
     viewModel {
         SalaryCalculatorViewModel(
             savedStateHandle = get(),
-            appContext = get<Application>(),
-            settingsManager = get()
+            settingsManager = get(),
+            salaryRepository = get()
+        )
+    }
+
+    viewModel {
+        SettingsViewModel(
+            application = androidApplication(),
+            settingsManager = get(),
+            colorSettings = get()
         )
     }
 }

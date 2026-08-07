@@ -6,8 +6,15 @@ import java.time.temporal.ChronoUnit
 
 object ShiftSchedule {
 
-    private val ANCHOR_DATE: LocalDate =
-        LocalDate.of(2026, 1, 1)
+    /**
+     * Базовая дата цикла смен. По умолчанию — 2026-01-01, но её можно
+     * переопределить из настроек (SettingsManager.saveAnchorDate / DataStore),
+     * чтобы график можно было сдвинуть без пересборки (№12). Изменение
+     * безопасно: формула одинакова для любой длины цикла и дат до/после базы.
+     * @Volatile — читается из разных потоков (UI, AlarmScheduler, Receivers).
+     */
+    @Volatile
+    var anchorDate: LocalDate = LocalDate.of(2026, 1, 1)
 
 
     private val CYCLE = listOf(
@@ -23,7 +30,17 @@ object ShiftSchedule {
         ShiftType.OFF
     )
 
+    // Валидация цикла при инициализации: пустой цикл привёл бы к делению
+    // на ноль в расчёте индекса. Падаем сразу, а не в рантайме (№13).
+    private val CYCLE_SIZE: Long = require(CYCLE.isNotEmpty()) {
+        "Список смен (CYCLE) не должен быть пустым"
+    }.let { CYCLE.size.toLong() }
 
+    /** Диапазон допустимых номеров бригад (1..5). */
+    const val MIN_BRIGADE = 1
+    const val MAX_BRIGADE = 5
+
+    // Смещения бригад фиксированы бизнес-правилом графика (см. getOffsetForBrigade).
     private fun getOffsetForBrigade(brigade: Int): Int {
         return when (brigade) {
             1 -> 0
@@ -40,20 +57,24 @@ object ShiftSchedule {
         date: LocalDate,
         brigade: Int = 1
     ): ShiftType {
+        // Валидация номера бригады (№5): некорректный номер молча давал бы
+        // график 1-й бригады (её смещение 0). Падаем явно, чтобы ошибка
+        // конфигурации всплыла сразу, а не дала «тихий» неверный график.
+        require(brigade in MIN_BRIGADE..MAX_BRIGADE) {
+            "Некорректный номер бригады: $brigade (допустимо $MIN_BRIGADE..$MAX_BRIGADE)"
+        }
 
         val diff = ChronoUnit.DAYS.between(
-            ANCHOR_DATE,
+            anchorDate,
             date
         )
 
         val offset = getOffsetForBrigade(brigade)
 
-        var idx =
-            ((diff + offset) % CYCLE.size) % CYCLE.size
-
-        if (idx < 0) {
-            idx += CYCLE.size
-        }
+        // Единая формула: корректно обрабатывает и отрицательные разности
+        // (даты раньше anchorDate), и любую длину цикла.
+        val size = CYCLE_SIZE
+        val idx = (((diff + offset) % size) + size) % size
 
         return CYCLE[idx.toInt()]
     }

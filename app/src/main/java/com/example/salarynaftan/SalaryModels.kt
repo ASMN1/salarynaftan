@@ -1,11 +1,15 @@
 package com.example.salarynaftan
 
 import android.content.Context
-import android.content.Intent
-import androidx.core.content.FileProvider
+import com.example.salarynaftan.data.SalaryRepository
+import com.example.salarynaftan.export.HistoryExporter
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
-import java.time.YearMonth
 import java.util.Locale
 
 
@@ -14,133 +18,162 @@ import java.util.Locale
 // ==========================================
 data class SalaryHistoryRecord(
     val monthIndex: Int,
+    val year: Int,
     val monthName: String,
     val totalClean: Double,
     val cleanToPay: Double,
     val advance: Double
 )
 
-class HistoryManager(context: Context) {
-    private val prefs = context.getSharedPreferences(PreferenceKeys.SALARY_HISTORY_PREFS, Context.MODE_PRIVATE)
-    private val appContext = context.applicationContext
+// Все операции suspend — выполняются в scope вызывающей стороны (ViewModel /
+// Compose-корутина), а не в бессрочном внутреннем CoroutineScope. Так scope
+// гарантированно отменяется вместе с экраном и не «живёт» весь процесс.
+class HistoryManager(
+    private val repository: SalaryRepository,
+    private val exporter: HistoryExporter
+) {
+    private val _records = MutableStateFlow<List<SalaryHistoryRecord>>(emptyList())
+    val records: StateFlow<List<SalaryHistoryRecord>> = _records.asStateFlow()
 
-    fun getRecords(): List<SalaryHistoryRecord> {
-        val raw = prefs.getString(PreferenceKeys.KEY_HISTORY_RECORDS, "") ?: ""
-        if (raw.isEmpty()) return emptyList()
-        return raw.split(";").mapNotNull { entry ->
-            val parts = entry.split("|")
-            if (parts.size == 5) {
-                val idx = parts[0].toIntOrNull() ?: return@mapNotNull null
-                val name = parts[1]
-                val total = parts[2].toDoubleOrNull() ?: return@mapNotNull null
-                val clean = parts[3].toDoubleOrNull() ?: return@mapNotNull null
-                val adv = parts[4].toDoubleOrNull() ?: return@mapNotNull null
-                SalaryHistoryRecord(idx, name, total, clean, adv)
-            } else null
+    private val _availableYears = MutableStateFlow<List<Int>>(emptyList())
+    val availableYears: StateFlow<List<Int>> = _availableYears.asStateFlow()
+
+    // Фильтр по году: null = все годы. Год храним отдельно от списка,
+    // чтобы визуальный фильтр не терялся при обновлении записей.
+    private val _selectedFilterYear = MutableStateFlow<Int?>(null)
+    val selectedFilterYear: StateFlow<Int?> = _selectedFilterYear.asStateFlow()
+
+    suspend fun refresh() {
+        _availableYears.value = repository.getAvailableYears()
+        applyFilter()
+    }
+
+    suspend fun setFilterYear(year: Int?) {
+        _selectedFilterYear.value = year
+        applyFilter()
+    }
+
+    private suspend fun applyFilter() {
+        val year = _selectedFilterYear.value
+        _records.value = if (year == null) {
+            repository.getHistoryRecords()
+        } else {
+            repository.getHistoryRecordsByYear(year)
         }
+        // Обновляем доступные годы после любого изменения данных.
+        _availableYears.value = repository.getAvailableYears()
     }
 
-    fun saveRecord(monthIndex: Int, monthName: String, totalClean: Double, cleanToPay: Double, advance: Double) {
-        val list = getRecords().toMutableList()
-        list.removeAll { it.monthIndex == monthIndex }
-        list.add(0, SalaryHistoryRecord(monthIndex, monthName, totalClean, cleanToPay, advance))
-        saveList(list)
+    suspend fun saveRecord(monthIndex: Int, year: Int, monthName: String, totalClean: Double, cleanToPay: Double, advance: Double) {
+        repository.saveHistoryRecord(monthIndex, year, monthName, totalClean, cleanToPay, advance)
+        applyFilter()
     }
 
-    fun deleteRecord(monthIndex: Int) {
-        val list = getRecords().toMutableList()
-        list.removeAll { it.monthIndex == monthIndex }
-        saveList(list)
+    suspend fun deleteRecord(monthIndex: Int, year: Int) {
+        repository.deleteHistoryRecord(year, monthIndex)
+        applyFilter()
     }
 
-    // НОВЫЙ МЕТОД: удалить все записи
-    fun deleteAll() {
-        prefs.edit().remove(PreferenceKeys.KEY_HISTORY_RECORDS).apply()
+    suspend fun deleteAll() {
+        repository.deleteAllHistory()
+        _selectedFilterYear.value = null
+        _records.value = emptyList()
+        _availableYears.value = emptyList()
     }
 
-    // НОВЫЙ МЕТОД: экспорт в CSV
-    fun exportToCsv(): File? {
-        val records = getRecords()
-        if (records.isEmpty()) return null
+    suspend fun exportToCsv(): File? = exporter.exportHistoryToCsv(repository.getHistoryEntities())
 
-        val csvContent = StringBuilder()
-        csvContent.append("Месяц;Итого начислено;К выплате;Аванс\n")
-        records.forEach { record ->
-            csvContent.append("${record.monthName};${String.format(Locale.US, "%.2f", record.totalClean)};${String.format(Locale.US, "%.2f", record.cleanToPay)};${String.format(Locale.US, "%.2f", record.advance)}\n")
-        }
-
-        val dir = File(appContext.cacheDir, "exports")
-        dir.mkdirs()
-        val file = File(dir, "history_export_${System.currentTimeMillis()}.csv")
-        file.writeText(csvContent.toString())
-        return file
-    }
-
-    // НОВЫЙ МЕТОД: поделиться CSV
-    fun shareCsv(context: Context): Boolean {
-        val file = exportToCsv() ?: return false
-        try {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.provider",
-                file
-            )
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(Intent.createChooser(shareIntent, "Экспорт истории"))
-            return true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return false
-        }
-    }
-
-    private fun saveList(list: List<SalaryHistoryRecord>) {
-        val raw = list.joinToString(";") { "${it.monthIndex}|${it.monthName}|${it.totalClean}|${it.cleanToPay}|${it.advance}" }
-        prefs.edit().putString(PreferenceKeys.KEY_HISTORY_RECORDS, raw).apply()
-    }
+    suspend fun shareCsv(context: Context): Boolean = exporter.shareHistoryCsv(context, repository.getHistoryEntities())
 }
 
-// ==========================================
-// АВТОЗАПОЛНЕНИЕ ЧАСОВ/СМЕН ИЗ ГРАФИКА + ПАРСИНГ ВВОДА
-// ==========================================
-fun autoFillFromSchedule(context: Context, monthIndex: Int, brigade: Int): Triple<Double, Double, Double> {
-    val year = java.time.LocalDate.now().year
-    val yearMonth = java.time.YearMonth.of(year, monthIndex + 1)
+/**
+ * UI-состояние экрана расчёта зарплаты.
+ * Вынесено на верхний уровень, чтобы чистая логика расчёта (SalaryCalculator)
+ * могла использовать его без жёсткой привязки к ViewModel.
+ */
+data class SalaryUiState(
+    val selectedMonthIndex: Int = LocalDate.now().monthValue - 1,
+    val selectedYear: Int = LocalDate.now().year,
+    val normHours: String = "",
+    val prazdnHours: String = "0",
+    val zaOtsutstvuushego: String = "",
+    val kvartalka: String = "",
+    val gazetaInput: String = "0",
+    val pozhertvovanjaInput: String = "0",
+    val subbotnikInput: String = "0",
+    val mmDetiCountInput: String = "0",
+    val childrenCountInput: String = "0",
+    val stravitaInput: String = "0",
+    val showResults: Boolean = false,
+    val calculationResult: CalculationResultWithError? = null,
+    val errorMessage: String? = null
+)
 
-    var nightCount = 0.0
-    var dayCount = 0.0
-    var workDaysCount = 0.0
-
-    for (day in 1..yearMonth.lengthOfMonth()) {
-        val date = yearMonth.atDay(day)
-        val shift = ShiftSchedule.shiftFor(date, brigade)
-
-        when (shift) {
-            ShiftType.NIGHT -> {
-                nightCount += 1.0
-                workDaysCount += 1.0
-            }
-            ShiftType.DAY -> {
-                dayCount += 1.0
-                workDaysCount += 1.0
-            }
-            ShiftType.MORNING -> {
-                workDaysCount += 1.0
-            }
-            ShiftType.OFF -> {}
-        }
-    }
-
-    val calculatedFactHours = workDaysCount * 8.0
-    return Triple(calculatedFactHours, nightCount, dayCount)
-}
+/**
+ * Результат расчёта зарплаты (без ошибки), либо флаг error.
+ * Вынесен на верхний уровень для переиспользования в ViewModel, UI и тестах.
+ */
+data class CalculationResultWithError(
+    val okladReal: Double = 0.0,
+    val stazh: Double = 0.0,
+    val vrednost: Double = 0.0,
+    val nightHours: Double = 0.0,
+    val nochPay: Double = 0.0,
+    val prazdn: Double = 0.0,
+    val prem: Double = 0.0,
+    val mmDeti: Double = 0.0,
+    val sumBeforePension: Double = 0.0,
+    val pension: Double = 0.0,
+    val dirty: Double = 0.0,
+    val fszn: Double = 0.0,
+    val prof: Double = 0.0,
+    val childrenDeduction: Double = 0.0,
+    val podohodnyBase: Double = 0.0,
+    val podohodny: Double = 0.0,
+    val avans: Double = 0.0,
+    val totalClean: Double = 0.0,
+    val cleanToPay: Double = 0.0,
+    val error: String? = null
+)
 
 fun parseNonNegative(input: String): Double =
-    input.replace(',', '.').toDoubleOrNull()?.takeIf { it >= 0 } ?: 0.0
+    input.replace(',', '.').replace(' ', '.')
+        .toDoubleOrNull()?.takeIf { it >= 0 } ?: 0.0
+
+fun parseMissedDays(input: String): Set<Int> =
+    input.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }.toSet()
 
 fun displayInt(input: String): String =
-    input.replace(',', '.').toDoubleOrNull()?.toInt()?.toString() ?: input
+    input.replace(',', '.').replace(' ', '.')
+        .toDoubleOrNull()?.toInt()?.toString() ?: input
+
+/** Форматирует коэффициент (0..1) как целые проценты для ввода в поле. */
+fun percentInput(coef: Double): String =
+    java.lang.String.format(java.util.Locale.US, "%.0f", coef * 100)
+
+/**
+ * Единая точка округления/форматирования денежных сумм (№20).
+ * Раньше `String.format("...%.2f")` был разбросан по нескольким экранам
+ * и PDF-экспортёру, что давало разный результат округления (и разный
+ * разделитель). Теперь все деньги форматируются здесь через BigDecimal с
+ * HALF_UP, чтобы начисление, история и экспорт совпадали до копейки.
+ */
+object MoneyFormatter {
+    /** Округляет сумму до копеек (2 знака) по правилу HALF_UP. */
+    fun round(value: Double): Double =
+        BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toDouble()
+
+    /** Форматирует сумму как «1234.56». Всегда 2 знака, без валюты. */
+    fun format(value: Double): String =
+        String.format(Locale.US, "%.2f", round(value))
+
+    /** Форматирует сумму как «1234.56 руб». */
+    fun formatRub(value: Double): String = "${format(value)} руб"
+
+    /** Форматирует сумму как «1234.56 BYN». */
+    fun formatByn(value: Double): String = "${format(value)} BYN"
+
+    /** Форматирует сумму с 1 знаком (для компактного отображения). */
+    fun format1(value: Double): String =
+        String.format(Locale.US, "%.1f", round(value))
+}

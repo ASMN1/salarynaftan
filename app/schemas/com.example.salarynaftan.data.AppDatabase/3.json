@@ -1,0 +1,182 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "03fe212b1ffb594656cbb6ad39963899",
+    "entities": [
+      {
+        "tableName": "month_salary",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`year` INTEGER NOT NULL, `monthIndex` INTEGER NOT NULL, `normHours` TEXT NOT NULL, `prazdnHours` TEXT NOT NULL, `zaOtsutstvuushego` TEXT NOT NULL, `kvartalka` TEXT NOT NULL, `gazetaInput` TEXT NOT NULL, `pozhertvovanjaInput` TEXT NOT NULL, `subbotnikInput` TEXT NOT NULL, `mmDetiCountInput` TEXT NOT NULL, `childrenCountInput` TEXT NOT NULL, `stravitaInput` TEXT NOT NULL, `missedDays` TEXT NOT NULL, `vacationDays` TEXT NOT NULL, PRIMARY KEY(`year`, `monthIndex`))",
+        "fields": [
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monthIndex",
+            "columnName": "monthIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normHours",
+            "columnName": "normHours",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prazdnHours",
+            "columnName": "prazdnHours",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zaOtsutstvuushego",
+            "columnName": "zaOtsutstvuushego",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kvartalka",
+            "columnName": "kvartalka",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gazetaInput",
+            "columnName": "gazetaInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pozhertvovanjaInput",
+            "columnName": "pozhertvovanjaInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subbotnikInput",
+            "columnName": "subbotnikInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mmDetiCountInput",
+            "columnName": "mmDetiCountInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "childrenCountInput",
+            "columnName": "childrenCountInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stravitaInput",
+            "columnName": "stravitaInput",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "missedDays",
+            "columnName": "missedDays",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vacationDays",
+            "columnName": "vacationDays",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "year",
+            "monthIndex"
+          ]
+        }
+      },
+      {
+        "tableName": "salary_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `year` INTEGER NOT NULL, `monthIndex` INTEGER NOT NULL, `monthName` TEXT NOT NULL, `totalClean` REAL NOT NULL, `cleanToPay` REAL NOT NULL, `advance` REAL NOT NULL, `timestamp` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monthIndex",
+            "columnName": "monthIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "monthName",
+            "columnName": "monthName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalClean",
+            "columnName": "totalClean",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cleanToPay",
+            "columnName": "cleanToPay",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "advance",
+            "columnName": "advance",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_salary_history_year_monthIndex",
+            "unique": true,
+            "columnNames": [
+              "year",
+              "monthIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_salary_history_year_monthIndex` ON `${TABLE_NAME}` (`year`, `monthIndex`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '03fe212b1ffb594656cbb6ad39963899')"
+    ]
+  }
+}

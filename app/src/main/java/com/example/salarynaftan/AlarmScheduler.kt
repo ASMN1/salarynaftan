@@ -11,12 +11,28 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
-class AlarmScheduler(private val context: Context, private val settingsManager: SettingsManager) {
+class AlarmScheduler(private val context: Context) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences(PreferenceKeys.ALARM_PREFS, Context.MODE_PRIVATE)
 
     companion object {
         private const val TAG = "AlarmScheduler"
+
+        // Label сериализуется через Base64: разделители | и ; внутри текста
+        // иначе ломают парсинг списка будильников (split происходил до
+        // раскодирования, поэтому простое экранирование не спасало).
+        // Base64-алфавит не содержит ни |, ни ; — разбиение всегда безопасно.
+        // Для обратной совместимости со старыми «плоскими» метками (без спецсимволов)
+        // при неудачном раскодировании возвращаем исходную строку.
+        private fun encodeLabel(label: String): String =
+            java.util.Base64.getEncoder().encodeToString(label.toByteArray(Charsets.UTF_8))
+
+        private fun decodeLabel(encoded: String): String =
+            try {
+                String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+            } catch (e: IllegalArgumentException) {
+                encoded
+            }
     }
 
     fun canScheduleExactAlarms(): Boolean {
@@ -24,6 +40,38 @@ class AlarmScheduler(private val context: Context, private val settingsManager: 
             alarmManager.canScheduleExactAlarms()
         } else {
             true
+        }
+    }
+
+    /**
+     * Тестовый будильник (№19 из UI/UX): ставит настоящий сигнал через указанные
+     * секунды (по умолчанию 10), чтобы пользователь убедился, что звук, вибрация
+     * и разрешения (exact alarm) работают. Вызывает тот же AlarmReceiver, что и
+     * настоящий будильник. Возвращает false, если точные будильники запрещены.
+     */
+    fun scheduleTestAlarm(delaySeconds: Int = 10): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            return false
+        }
+        val triggerAt = System.currentTimeMillis() + delaySeconds * 1000L
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("alarm_title", "🔔 Тест будильника")
+            action = "com.example.salarynaftan.TEST_ALARM"
+        }
+        // Уникальный requestCode, чтобы не конфликтовать с реальными будильниками
+        val requestCode = 100000 + (System.currentTimeMillis() % 90000).toInt()
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка установки тестового будильника", e)
+            return false
         }
     }
 
@@ -169,12 +217,48 @@ class AlarmScheduler(private val context: Context, private val settingsManager: 
         getRegularAlarms().forEach { cancelSingleRegularAlarm(it.id) }
     }
 
+    /**
+     * Перепланирование сменного будильника на следующий подходящий день.
+     * Вызывается при срабатывании (AlarmReceiver), чтобы будильник «поехал» дальше.
+     */
+    fun rescheduleShiftAlarmAfterRing(
+        shiftType: ShiftType,
+        brigade: Int,
+        index: Int,
+        timeStr: String
+    ) {
+        if (isAlarmScheduledForShift(shiftType, brigade)) {
+            scheduleSingleShiftAlarm(
+                type = shiftType,
+                brigade = brigade,
+                index = index,
+                timeStr = timeStr
+            )
+        }
+    }
+
     fun rescheduleAllAlarmsForBrigade(brigade: Int) {
         // scheduleAlarmsForShift сам отменяет предыдущие, поэтому достаточно
         // только заново запланировать те смены, у которых будильники включены.
         ShiftType.entries.forEach { type ->
             if (isAlarmScheduledForShift(type, brigade)) {
                 scheduleAlarmsForShift(type, brigade)
+            }
+        }
+    }
+
+    /**
+     * Переключение активной бригады: сменные будильники имеют смысл только для
+     * одной (активной) бригады пользователя, поэтому при смене бригады гасим
+     * ВСЕ сменные будильники и заново ставим только для новой бригады
+     * (по включённым флагам). Иначе пользователь получал бы «чужие» будильники
+     * от старых бригад (п.4.4).
+     */
+    fun switchActiveBrigade(newBrigade: Int) {
+        cancelAllShiftAlarmsAcrossAllBrigades()
+        ShiftType.entries.forEach { type ->
+            if (isAlarmScheduledForShift(type, newBrigade)) {
+                scheduleAlarmsForShift(type, newBrigade)
             }
         }
     }
@@ -191,14 +275,16 @@ class AlarmScheduler(private val context: Context, private val settingsManager: 
                     id = parts[0].toLongOrNull() ?: System.currentTimeMillis(),
                     time = parts[1],
                     isEnabled = parts[2].toBoolean(),
-                    label = parts[3]
+                    label = decodeLabel(parts[3])
                 )
             } else null
         }
     }
 
     fun saveRegularAlarms(alarms: List<RegularAlarm>) {
-        val serialized = alarms.joinToString(";") { "${it.id}|${it.time}|${it.isEnabled}|${it.label}" }
+        val serialized = alarms.joinToString(";") {
+            "${it.id}|${it.time}|${it.isEnabled}|${encodeLabel(it.label)}"
+        }
         prefs.edit().putString(PreferenceKeys.REGULAR_ALARMS, serialized).apply()
 
         alarms.forEach { alarm ->
@@ -291,6 +377,9 @@ class AlarmScheduler(private val context: Context, private val settingsManager: 
             val mOff = endTime.substringAfter(":").toIntOrNull() ?: 0
             var endLdt = now.withHour(hOff).withMinute(mOff).withSecond(0)
             if (endLdt.isBefore(now)) endLdt = endLdt.plusDays(1)
+            // Если время окончания раньше или равно началу (например, тишина 23:00–07:00),
+            // сдвигаем окончание на ещё один день, иначе OFF сработает раньше ON.
+            if (endLdt.isBefore(startLdt) || endLdt == startLdt) endLdt = endLdt.plusDays(1)
 
             try {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
@@ -316,25 +405,42 @@ class AlarmScheduler(private val context: Context, private val settingsManager: 
         cancelAllShiftAlarmsAcrossAllBrigades()
         cancelAllRegularAlarms()
 
+        // Каждый будильник планируется в изолированном runCatching: исключение
+        // на одном (например, на конкретном OEM) не должно останавливать
+        // восстановление остальных будильников (BUG-003).
+        fun <T> attempt(label: String, block: () -> T) {
+            try {
+                block()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка восстановления будильника ($label)", e)
+            }
+        }
+
         // Восстанавливаем будильники для ВСЕХ бригад, у которых они были включены,
         // а не только для текущей. Ключи хранятся в формате "shift_alarm_<brigade>_<type>".
         for (b in 1..5) {
             ShiftType.entries.forEach { type ->
                 if (isAlarmScheduledForShift(type, b)) {
-                    scheduleAlarmsForShift(type, b)
+                    attempt("сменная $b/${type.name}") {
+                        scheduleAlarmsForShift(type, b)
+                    }
                 }
             }
         }
         getRegularAlarms().forEach { alarm ->
             if (alarm.isEnabled) {
-                scheduleSingleRegularAlarm(alarm)
+                attempt("обычный ${alarm.id}") {
+                    scheduleSingleRegularAlarm(alarm)
+                }
             }
         }
         val autoPrefs = context.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, Context.MODE_PRIVATE)
         if (autoPrefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)) {
             val start = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
             val end = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
-            updateAutoSilenceAlarms(true, start, end)
+            attempt("авто-тишина") {
+                updateAutoSilenceAlarms(true, start, end)
+            }
         }
     }
 }

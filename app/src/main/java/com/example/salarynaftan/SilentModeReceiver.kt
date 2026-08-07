@@ -6,8 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
+import timber.log.Timber
 import java.time.LocalDate
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,7 +45,7 @@ class SilentModeReceiver : BroadcastReceiver() {
             val startTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
             val endTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
             if (isEnabled) {
-                AlarmScheduler(context, SettingsManager(context)).updateAutoSilenceAlarms(true, startTime, endTime)
+                AlarmScheduler(context).updateAutoSilenceAlarms(true, startTime, endTime)
             }
         }
 
@@ -59,7 +59,6 @@ class SilentModeReceiver : BroadcastReceiver() {
         try {
             if (action == PreferenceKeys.ACTION_SILENT_ON) {
                 if (isOtsypnoy && hasDndPermission) {
-                    // Сохраняем текущий режим уведомлений
                     val currentFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         notificationManager?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
                     } else {
@@ -78,6 +77,21 @@ class SilentModeReceiver : BroadcastReceiver() {
                     } else {
                         // Fallback для старых версий
                         audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                    }
+                } else if (isOtsypnoy && !hasDndPermission) {
+                    // Отсыпной день есть, но нет разрешения «Не беспокоить» —
+                    // молча ничего не делать нельзя: пользователь должен понять, почему тишина не сработала.
+                    Timber.w("Авто-тишина не сработала: нет разрешения DND (отсыпной день после ночной смены)")
+                    try {
+                        val notif = Notifications.info(
+                            context = context,
+                            title = "Авто-тишина не сработала",
+                            text = "Предоставьте разрешение «Не беспокоить», чтобы автоматическая тишина после ночной смены работала",
+                            notificationId = 98765
+                        ).build()
+                        notificationManager?.notify(98765, notif)
+                    } catch (e: Exception) {
+                        Timber.e(e, "Не удалось показать подсказку об авто-тишине")
                     }
                 }
             } else if (action == PreferenceKeys.ACTION_SILENT_OFF) {
@@ -102,7 +116,7 @@ class SilentModeReceiver : BroadcastReceiver() {
                 }
             }
         } catch (e: SecurityException) {
-            e.printStackTrace()
+            Timber.e(e, "Ошибка доступа при авто-тишине")
         }
     }
 }

@@ -7,13 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.ComponentActivity
@@ -43,9 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.time.LocalDateTime
@@ -55,16 +48,13 @@ import kotlin.math.roundToInt
 
 class AlarmRingingActivity : ComponentActivity(), KoinComponent {
 
-    private var mediaPlayer: MediaPlayer? = null
-    private var vibrator: Vibrator? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Флаги для отображения поверх заблокированного экрана
         // На Android 12+ setShowWhenLocked + window flags ВМЕСТЕ,
         // т.к. только API без window flags может не сработать на Samsung/Xiaomi
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
             try {
@@ -107,9 +97,14 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
         val alarmTitle = intent.getStringExtra("alarm_title") ?: "Смена"
         val settings: SettingsManager = get()
 
-        // Перезапускаем звук/вибрацию при каждом новом intent
-        releaseMedia()
-        startAudioAndVibration(settings)
+        // Запускаем звук/вибрацию в фоновом сервисе — он не оборвётся,
+        // если активность будет закрыта системой.
+        AlarmSoundService.start(
+            context = this,
+            uri = settings.getRingtoneUri(),
+            volume = settings.getVolume(),
+            rampSec = settings.getVolumeRampSec()
+        )
 
         setContent {
             MaterialTheme {
@@ -148,69 +143,23 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
         } catch (_: Exception) { }
     }
 
-    private fun startAudioAndVibration(settings: SettingsManager) {
-        val uri = settings.getRingtoneUri()
-            ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-        val targetVolume = settings.getVolume()
-
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-
-        val pattern = longArrayOf(0, 800, 400)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, 0)
-        }
-
-        try {
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(this@AlarmRingingActivity, uri)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                isLooping = true
-                setVolume(0f, 0f)
-                prepare()
-                start()
-            }
-            lifecycleScope.launch {
-                var cur = 0f
-                val step = targetVolume / 20
-                repeat(20) {
-                    cur += step
-                    mediaPlayer?.setVolume(cur, cur)
-                    delay(500)
-                }
-            }
-        } catch (_: Exception) { }
-    }
-
     private var isFinishing = false
     private fun stopAndFinish() {
         if (isFinishing) return
         isFinishing = true
-        releaseMedia()
+        // Останавливаем звонок в фоновом сервисе.
+        AlarmSoundService.stop(this)
         finish()
     }
 
-    private fun releaseMedia() {
-        try { mediaPlayer?.let { if (it.isPlaying) it.stop(); it.release() } } catch (_: Exception) { }
-        mediaPlayer = null
-        vibrator?.cancel()
+    override fun onDestroy() {
+        super.onDestroy()
     }
 
-    override fun onDestroy() {
-        releaseMedia()
-        super.onDestroy()
+    override fun onStop() {
+        super.onStop()
+        // При сворачивании не останавливаем звук — его держит фоновый сервис,
+        // чтобы звонок не оборвался, если активность закроют.
     }
 }
 

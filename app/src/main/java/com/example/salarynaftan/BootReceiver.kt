@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -21,7 +22,7 @@ class BootReceiver : BroadcastReceiver() {
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
 
                 try {
-                    val scheduler = AlarmScheduler(appContext, SettingsManager(appContext))
+                    val scheduler = AlarmScheduler(appContext)
                     // Отменяем все существующие будильники, чтобы избежать дублирования
                     scheduler.cancelAllShiftAlarmsAcrossAllBrigades()
                     scheduler.cancelAllRegularAlarms()
@@ -29,7 +30,7 @@ class BootReceiver : BroadcastReceiver() {
                     scheduler.rescheduleAllAfterBoot()
 
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Timber.e(e, "Ошибка перепланирования будильников после загрузки")
                 } finally {
                     pendingResult.finish()
                 }

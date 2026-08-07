@@ -13,3 +13,15 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Служебные папки инструментов/агента
+.proxyai/
+.kotlin/
+*.ps1
+*.log
+
+# Резервная копия исходников и служебные файлы
+backup_src_pre_packages/
+salary_extract/
+norms.csv
+salary.xlsx

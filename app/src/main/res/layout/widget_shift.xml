@@ -3,47 +3,171 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:background="@drawable/widget_background"
-    android:padding="12dp">
+    android:orientation="horizontal"
+    android:baselineAligned="false"
+    android:padding="2dp"
+    android:background="@drawable/widget_background">
 
-    <TextView
-        android:id="@+id/tvWidgetTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Нафтан"
-        android:textColor="#88FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/tvWidgetShiftType"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="—"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:gravity="center" />
-
-    <TextView
-        android:id="@+id/tvWidgetShiftTime"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text=""
-        android:textColor="#BBFFFFFF"
-        android:textSize="11sp"
-        android:gravity="center" />
-
-    <TextView
-        android:id="@+id/tvWidgetNext"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text=""
-        android:textColor="#88FFFFFF"
-        android:textSize="10sp"
+    <!-- Day 1 – Today -->
+    <LinearLayout
+        android:id="@+id/day1_container"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
         android:gravity="center"
-        android:layout_marginTop="4dp" />
+        android:padding="4dp"
+        android:layout_margin="2dp">
+
+        <TextView
+            android:id="@+id/day1_day_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Пн 6"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/day1_shift_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/day1_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textColor="#CCFFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="1dp" />
+
+        <TextView
+            android:id="@+id/day1_pay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textStyle="bold"
+            android:textColor="#FFD700"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <!-- Day 2 – Tomorrow -->
+    <LinearLayout
+        android:id="@+id/day2_container"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="4dp"
+        android:layout_margin="2dp">
+
+        <TextView
+            android:id="@+id/day2_day_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Вт 7"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/day2_shift_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/day2_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textColor="#CCFFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="1dp" />
+
+        <TextView
+            android:id="@+id/day2_pay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textStyle="bold"
+            android:textColor="#FFD700"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <!-- Day 3 – Day after tomorrow -->
+    <LinearLayout
+        android:id="@+id/day3_container"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="4dp"
+        android:layout_margin="2dp">
+
+        <TextView
+            android:id="@+id/day3_day_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ср 8"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/day3_shift_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/day3_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textColor="#CCFFFFFF"
+            android:gravity="center"
+            android:layout_marginTop="1dp" />
+
+        <TextView
+            android:id="@+id/day3_pay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="8sp"
+            android:textStyle="bold"
+            android:textColor="#FFD700"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
 
 </LinearLayout>
