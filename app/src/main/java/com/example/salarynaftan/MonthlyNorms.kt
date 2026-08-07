@@ -58,16 +58,22 @@ object MonthlyNorms {
 // зарплаты использовал один и тот же список.
 object Holidays {
 
+    /** Дата праздника + название для отображения на графике. */
+    data class HolidayInfo(
+        val date: java.time.MonthDay,
+        val name: String
+    )
+
     // Фиксированные даты государственных праздников (не зависят от года).
-    val FIXED = listOf(
-        java.time.MonthDay.of(1, 1),   // Новый год
-        java.time.MonthDay.of(1, 7),   // Рождество Христово (православное)
-        java.time.MonthDay.of(3, 8),   // День женщин
-        java.time.MonthDay.of(5, 1),   // Праздник труда
-        java.time.MonthDay.of(5, 9),   // День Победы
-        java.time.MonthDay.of(7, 3),   // День Независимости
-        java.time.MonthDay.of(11, 7),  // День Октябрьской революции
-        java.time.MonthDay.of(12, 25)  // Рождество Христово (католическое)
+    val FIXED: List<HolidayInfo> = listOf(
+        HolidayInfo(java.time.MonthDay.of(1, 1), "Новый год"),
+        HolidayInfo(java.time.MonthDay.of(1, 7), "Рождество Христово (православн.)"),
+        HolidayInfo(java.time.MonthDay.of(3, 8), "День женщин"),
+        HolidayInfo(java.time.MonthDay.of(5, 1), "Праздник труда"),
+        HolidayInfo(java.time.MonthDay.of(5, 9), "День Победы"),
+        HolidayInfo(java.time.MonthDay.of(7, 3), "День Независимости"),
+        HolidayInfo(java.time.MonthDay.of(11, 7), "День Октябрьской революции"),
+        HolidayInfo(java.time.MonthDay.of(12, 25), "Рождество Христово (католич.)")
     )
 
     // Радуница — переходящий праздник (второй вторник после православной
@@ -89,15 +95,30 @@ object Holidays {
     fun holidayDaysInMonth(year: Int, monthIndex: Int): Set<Int> {
         val month = monthIndex + 1
         return FIXED
-            .filter { it.monthValue == month }
-            .map { it.dayOfMonth }
+            .filter { it.date.monthValue == month }
+            .map { it.date.dayOfMonth }
             .toMutableSet()
             .apply {
                 RADUNITSA_BY_YEAR[year]?.takeIf { it.monthValue == month }?.let { add(it.dayOfMonth) }
             }
     }
 
+    /**
+     * Праздники месяца с названиями (дата, название) для отображения списком.
+     * Сортировка по дню месяца.
+     */
+    fun holidaysInMonth(year: Int, monthIndex: Int): List<Pair<Int, String>> {
+        val month = monthIndex + 1
+        val result = mutableListOf<Pair<Int, String>>()
+        FIXED.filter { it.date.monthValue == month }
+            .forEach { result.add(it.date.dayOfMonth to it.name) }
+        RADUNITSA_BY_YEAR[year]
+            ?.takeIf { it.monthValue == month }
+            ?.let { result.add(it.dayOfMonth to "Радуница") }
+        return result.sortedBy { it.first }
+    }
+
     fun isHoliday(date: java.time.LocalDate): Boolean =
-        java.time.MonthDay.from(date) in FIXED ||
+        java.time.MonthDay.from(date) in FIXED.map { it.date } ||
             RADUNITSA_BY_YEAR[date.year] == java.time.MonthDay.from(date)
 }

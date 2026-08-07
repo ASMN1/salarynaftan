@@ -20,43 +20,29 @@ import kotlinx.coroutines.runBlocking
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+/**
+ * DataStoreManager — единая точка доступа к настройкам приложения.
+ *
+ * Реализация построена на типизированном кэше на каждый ключ: первое чтение
+ * ключа загружает его значение из DataStore (один блокирующий read), все
+ * последующие чтения идут из памяти. Это избавляет от десятков однотипных
+ * getter-блоков «ensure(KEY) { cacheX = read(KEY, DEFAULT) }».
+ *
+ * Записи уходят в фоновый scope (limitedParallelism(1)), поэтому не блокируют
+ * UI-поток и выполняются строго в порядке вызовов — без потери финальной
+ * записи при быстрых последовательных сохранениях.
+ */
 class DataStoreManager(context: Context) {
 
     private val store = context.settingsDataStore
 
-    // Пишущие операции уходят в фоновый scope — раньше они блокировали
-    // вызывающий поток через runBlocking (в т.ч. Main) на каждом сохранении.
-    // limitedParallelism(1) гарантирует последовательное выполнение записей
-    // в порядке вызовов, устраняя гонку, когда быстрые сохранения приходили
-    // в произвольном порядке и могли «перезаписать» более свежее значение
-    // более старым (BUG: потеря последней записи).
     private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
-    // Каждый ключ инициализируется из DataStore ровно один раз.
+    // Ключи, уже загруженные из DataStore (защищают от повторного блокирующего чтения).
     private val loadedKeys = mutableSetOf<Preferences.Key<*>>()
 
-    // In-memory cache — avoids runBlocking on every read after first access
-    @Volatile private var cacheVolume = DEFAULT_VOLUME
-    @Volatile private var cacheRingtoneUri = ""
-    @Volatile private var cacheIsDark = true
-    @Volatile private var cachePrimaryColor = DEFAULT_PRIMARY_COLOR
-    @Volatile private var cacheBackgroundColor = DEFAULT_BACKGROUND_COLOR_DARK
-    @Volatile private var cacheSurfaceColor = DEFAULT_SURFACE_COLOR_DARK
-    @Volatile private var cacheBrigade = DEFAULT_BRIGADE
-    @Volatile private var cacheSalary = DEFAULT_SALARY
-    @Volatile private var cachePremiumCoef = DEFAULT_PREMIUM_COEF
-    @Volatile private var cacheStazhKoef = DEFAULT_STAZH_KOEF
-    @Volatile private var cacheSelectedMonth = DEFAULT_SELECTED_MONTH
-    @Volatile private var cacheUseDynamicColors = false
-    @Volatile private var cachePpsPercent = DEFAULT_PPS_PERCENT
-    @Volatile private var cacheMorningColor = DEFAULT_MORNING_COLOR
-    @Volatile private var cacheDayColor = DEFAULT_DAY_COLOR
-    @Volatile private var cacheNightColor = DEFAULT_NIGHT_COLOR
-    @Volatile private var cacheOffColor = DEFAULT_OFF_COLOR
-    @Volatile private var cacheUiScale = DEFAULT_UI_SCALE
-    @Volatile private var cacheVolumeRampSec = DEFAULT_VOLUME_RAMP_SEC
-    @Volatile private var cacheAnchorDate = DEFAULT_ANCHOR_DATE
-    @Volatile private var cacheShiftReminderMinutes = DEFAULT_SHIFT_REMINDER_MINUTES
+    // In-memory кэш: ключ → значение. Заменяет десятки @Volatile-полей.
+    private val cache = mutableMapOf<Preferences.Key<*>, Any>()
 
     companion object {
         private val KEY_VOLUME = floatPreferencesKey("alarm_volume")
@@ -119,175 +105,96 @@ class DataStoreManager(context: Context) {
     }
 
     // ---- Volume ----
-    fun getVolume(): Float {
-        ensure(KEY_VOLUME) { cacheVolume = readFloat(KEY_VOLUME, DEFAULT_VOLUME) }
-        return cacheVolume
-    }
-    fun saveVolume(v: Float) { cacheVolume = v; writeFloat(KEY_VOLUME, v) }
+    fun getVolume(): Float = load(KEY_VOLUME, DEFAULT_VOLUME)
+    fun saveVolume(v: Float) = save(KEY_VOLUME, v)
 
     // ---- Ringtone ----
     fun getRingtoneUri(): String? {
-        ensure(KEY_RINGTONE_URI) { cacheRingtoneUri = readString(KEY_RINGTONE_URI, "") }
-        return if (cacheRingtoneUri.isEmpty()) null else cacheRingtoneUri
+        val uri = load(KEY_RINGTONE_URI, "")
+        return if (uri.isEmpty()) null else uri
     }
-    fun saveRingtoneUri(uri: String?) { cacheRingtoneUri = uri ?: ""; writeString(KEY_RINGTONE_URI, uri ?: "") }
+    fun saveRingtoneUri(uri: String?) = save(KEY_RINGTONE_URI, uri ?: "")
 
     // ---- Theme ----
-    fun isDarkTheme(): Boolean {
-        ensure(KEY_IS_DARK) { cacheIsDark = readBool(KEY_IS_DARK, true) }
-        return cacheIsDark
-    }
-    fun saveTheme(isDark: Boolean) { cacheIsDark = isDark; writeBool(KEY_IS_DARK, isDark) }
+    fun isDarkTheme(): Boolean = load(KEY_IS_DARK, true)
+    fun saveTheme(isDark: Boolean) = save(KEY_IS_DARK, isDark)
 
     // ---- Primary color ----
-    fun getPrimaryColor(): Int {
-        ensure(KEY_PRIMARY_COLOR) { cachePrimaryColor = readInt(KEY_PRIMARY_COLOR, DEFAULT_PRIMARY_COLOR) }
-        return cachePrimaryColor
-    }
-    fun savePrimaryColor(c: Int) { cachePrimaryColor = c; writeInt(KEY_PRIMARY_COLOR, c) }
+    fun getPrimaryColor(): Int = load(KEY_PRIMARY_COLOR, DEFAULT_PRIMARY_COLOR)
+    fun savePrimaryColor(c: Int) = save(KEY_PRIMARY_COLOR, c)
 
     // ---- Background color ----
-    fun getBackgroundColor(): Int {
-        ensure(KEY_BACKGROUND_COLOR) { cacheBackgroundColor = readInt(KEY_BACKGROUND_COLOR, DEFAULT_BACKGROUND_COLOR_DARK) }
-        return cacheBackgroundColor
-    }
-    fun saveBackgroundColor(c: Int) { cacheBackgroundColor = c; writeInt(KEY_BACKGROUND_COLOR, c) }
+    fun getBackgroundColor(): Int = load(KEY_BACKGROUND_COLOR, DEFAULT_BACKGROUND_COLOR_DARK)
+    fun saveBackgroundColor(c: Int) = save(KEY_BACKGROUND_COLOR, c)
 
     // ---- Surface color ----
-    fun getSurfaceColor(): Int {
-        ensure(KEY_SURFACE_COLOR) { cacheSurfaceColor = readInt(KEY_SURFACE_COLOR, DEFAULT_SURFACE_COLOR_DARK) }
-        return cacheSurfaceColor
-    }
-    fun saveSurfaceColor(c: Int) { cacheSurfaceColor = c; writeInt(KEY_SURFACE_COLOR, c) }
+    fun getSurfaceColor(): Int = load(KEY_SURFACE_COLOR, DEFAULT_SURFACE_COLOR_DARK)
+    fun saveSurfaceColor(c: Int) = save(KEY_SURFACE_COLOR, c)
 
     // ---- Brigade ----
-    fun getBrigade(): Int {
-        ensure(KEY_BRIGADE) { cacheBrigade = readInt(KEY_BRIGADE, DEFAULT_BRIGADE).coerceIn(1, 5) }
-        return cacheBrigade
-    }
-    fun setBrigade(b: Int) { val v = b.coerceIn(1, 5); cacheBrigade = v; writeInt(KEY_BRIGADE, v) }
+    fun getBrigade(): Int = load(KEY_BRIGADE, DEFAULT_BRIGADE) { it.coerceIn(1, 5) }
+    fun setBrigade(b: Int) = save(KEY_BRIGADE, b) { it.coerceIn(1, 5) }
 
     // ---- Salary ----
-    fun getSalary(): Double {
-        ensure(KEY_SALARY) { cacheSalary = readString(KEY_SALARY, DEFAULT_SALARY) }
-        return cacheSalary.toDoubleOrNull() ?: DEFAULT_SALARY.toDouble()
-    }
-    fun saveSalary(v: Double) {
-        val s = v.toString()
-        cacheSalary = s
-        writeString(KEY_SALARY, s)
-    }
+    fun getSalary(): Double =
+        load(KEY_SALARY, DEFAULT_SALARY).toDoubleOrNull() ?: DEFAULT_SALARY.toDouble()
+    fun saveSalary(v: Double) = save(KEY_SALARY, v.toString())
 
     // ---- Premium Coef ----
-    fun getPremiumCoef(): Float {
-        ensure(KEY_PREMIUM_COEF) { cachePremiumCoef = readFloat(KEY_PREMIUM_COEF, DEFAULT_PREMIUM_COEF) }
-        return cachePremiumCoef
-    }
-    fun savePremiumCoef(v: Float) { cachePremiumCoef = v; writeFloat(KEY_PREMIUM_COEF, v) }
+    fun getPremiumCoef(): Float = load(KEY_PREMIUM_COEF, DEFAULT_PREMIUM_COEF)
+    fun savePremiumCoef(v: Float) = save(KEY_PREMIUM_COEF, v)
 
     // ---- Stazh Koef ----
-    fun getStazhKoef(): Float {
-        ensure(KEY_STAZH_KOEF) { cacheStazhKoef = readFloat(KEY_STAZH_KOEF, DEFAULT_STAZH_KOEF) }
-        return cacheStazhKoef
-    }
-    fun saveStazhKoef(v: Float) { cacheStazhKoef = v; writeFloat(KEY_STAZH_KOEF, v) }
+    fun getStazhKoef(): Float = load(KEY_STAZH_KOEF, DEFAULT_STAZH_KOEF)
+    fun saveStazhKoef(v: Float) = save(KEY_STAZH_KOEF, v)
 
     // ---- Selected Month ----
-    fun getSelectedMonthIndex(): Int {
-        ensure(KEY_SELECTED_MONTH) { cacheSelectedMonth = readInt(KEY_SELECTED_MONTH, DEFAULT_SELECTED_MONTH).coerceIn(0, 11) }
-        return cacheSelectedMonth
-    }
-    fun saveSelectedMonthIndex(i: Int) { val v = i.coerceIn(0, 11); cacheSelectedMonth = v; writeInt(KEY_SELECTED_MONTH, v) }
+    fun getSelectedMonthIndex(): Int = load(KEY_SELECTED_MONTH, DEFAULT_SELECTED_MONTH) { it.coerceIn(0, 11) }
+    fun saveSelectedMonthIndex(i: Int) = save(KEY_SELECTED_MONTH, i) { it.coerceIn(0, 11) }
 
     // ---- Dynamic Colors ----
-    fun getUseDynamicColors(): Boolean {
-        ensure(KEY_USE_DYNAMIC_COLORS) { cacheUseDynamicColors = readBool(KEY_USE_DYNAMIC_COLORS, false) }
-        return cacheUseDynamicColors
-    }
-    fun saveUseDynamicColors(use: Boolean) { cacheUseDynamicColors = use; writeBool(KEY_USE_DYNAMIC_COLORS, use) }
+    fun getUseDynamicColors(): Boolean = load(KEY_USE_DYNAMIC_COLORS, false)
+    fun saveUseDynamicColors(use: Boolean) = save(KEY_USE_DYNAMIC_COLORS, use)
 
     // ---- PPS percent (отчисления в ППС, % от начислений) ----
-    fun getPpsPercent(): Float {
-        ensure(KEY_PPS_PERCENT) { cachePpsPercent = readFloat(KEY_PPS_PERCENT, DEFAULT_PPS_PERCENT) }
-        return cachePpsPercent
-    }
-    fun savePpsPercent(p: Float) {
-        val v = p.coerceIn(0f, 100f)
-        cachePpsPercent = v
-        writeFloat(KEY_PPS_PERCENT, v)
-    }
+    fun getPpsPercent(): Float = load(KEY_PPS_PERCENT, DEFAULT_PPS_PERCENT)
+    fun savePpsPercent(p: Float) = save(KEY_PPS_PERCENT, p) { it.coerceIn(0f, 100f) }
 
     // ---- UI Scale (масштаб интерфейса) ----
-    fun getUiScale(): Float {
-        ensure(KEY_UI_SCALE) { cacheUiScale = readFloat(KEY_UI_SCALE, DEFAULT_UI_SCALE) }
-        return cacheUiScale
-    }
-    fun saveUiScale(s: Float) {
-        val v = s.coerceIn(MIN_UI_SCALE, MAX_UI_SCALE)
-        cacheUiScale = v
-        writeFloat(KEY_UI_SCALE, v)
-    }
+    fun getUiScale(): Float = load(KEY_UI_SCALE, DEFAULT_UI_SCALE)
+    fun saveUiScale(s: Float) = save(KEY_UI_SCALE, s) { it.coerceIn(MIN_UI_SCALE, MAX_UI_SCALE) }
 
     // ---- Volume Ramp (нарастание громкости, сек) ----
-    fun getVolumeRampSec(): Int {
-        ensure(KEY_VOLUME_RAMP_SEC) { cacheVolumeRampSec = readInt(KEY_VOLUME_RAMP_SEC, DEFAULT_VOLUME_RAMP_SEC) }
-        return cacheVolumeRampSec
-    }
-    fun saveVolumeRampSec(s: Int) {
-        val v = s.coerceIn(MIN_VOLUME_RAMP_SEC, MAX_VOLUME_RAMP_SEC)
-        cacheVolumeRampSec = v
-        writeInt(KEY_VOLUME_RAMP_SEC, v)
-    }
+    fun getVolumeRampSec(): Int = load(KEY_VOLUME_RAMP_SEC, DEFAULT_VOLUME_RAMP_SEC)
+    fun saveVolumeRampSec(s: Int) = save(KEY_VOLUME_RAMP_SEC, s) { it.coerceIn(MIN_VOLUME_RAMP_SEC, MAX_VOLUME_RAMP_SEC) }
 
     // ---- Базовая дата цикла смен (anchor date) ----
-    fun getAnchorDate(): String {
-        ensure(KEY_ANCHOR_DATE) { cacheAnchorDate = readString(KEY_ANCHOR_DATE, DEFAULT_ANCHOR_DATE) }
-        return cacheAnchorDate
-    }
+    fun getAnchorDate(): String = load(KEY_ANCHOR_DATE, DEFAULT_ANCHOR_DATE)
     fun saveAnchorDate(isoDate: String) {
         val safe = isoDate.takeIf { it.isNotBlank() } ?: DEFAULT_ANCHOR_DATE
-        cacheAnchorDate = safe
-        writeString(KEY_ANCHOR_DATE, safe)
+        save(KEY_ANCHOR_DATE, safe)
     }
 
     // ---- Пред-напоминание о смене (минут до сигнала, 0 = выключено) ----
-    fun getShiftReminderMinutes(): Int {
-        ensure(KEY_SHIFT_REMINDER_MINUTES) { cacheShiftReminderMinutes = readInt(KEY_SHIFT_REMINDER_MINUTES, DEFAULT_SHIFT_REMINDER_MINUTES) }
-        return cacheShiftReminderMinutes
-    }
-    fun saveShiftReminderMinutes(minutes: Int) {
-        val v = minutes.coerceIn(MIN_SHIFT_REMINDER_MINUTES, MAX_SHIFT_REMINDER_MINUTES)
-        cacheShiftReminderMinutes = v
-        writeInt(KEY_SHIFT_REMINDER_MINUTES, v)
-    }
+    fun getShiftReminderMinutes(): Int = load(KEY_SHIFT_REMINDER_MINUTES, DEFAULT_SHIFT_REMINDER_MINUTES)
+    fun saveShiftReminderMinutes(minutes: Int) =
+        save(KEY_SHIFT_REMINDER_MINUTES, minutes) { it.coerceIn(MIN_SHIFT_REMINDER_MINUTES, MAX_SHIFT_REMINDER_MINUTES) }
 
     // ---- Morning color ----
-    fun getMorningColor(): Int {
-        ensure(KEY_MORNING_COLOR) { cacheMorningColor = readInt(KEY_MORNING_COLOR, DEFAULT_MORNING_COLOR) }
-        return cacheMorningColor
-    }
-    fun saveMorningColor(c: Int) { cacheMorningColor = c; writeInt(KEY_MORNING_COLOR, c) }
+    fun getMorningColor(): Int = load(KEY_MORNING_COLOR, DEFAULT_MORNING_COLOR)
+    fun saveMorningColor(c: Int) = save(KEY_MORNING_COLOR, c)
 
     // ---- Day color ----
-    fun getDayColor(): Int {
-        ensure(KEY_DAY_COLOR) { cacheDayColor = readInt(KEY_DAY_COLOR, DEFAULT_DAY_COLOR) }
-        return cacheDayColor
-    }
-    fun saveDayColor(c: Int) { cacheDayColor = c; writeInt(KEY_DAY_COLOR, c) }
+    fun getDayColor(): Int = load(KEY_DAY_COLOR, DEFAULT_DAY_COLOR)
+    fun saveDayColor(c: Int) = save(KEY_DAY_COLOR, c)
 
     // ---- Night color ----
-    fun getNightColor(): Int {
-        ensure(KEY_NIGHT_COLOR) { cacheNightColor = readInt(KEY_NIGHT_COLOR, DEFAULT_NIGHT_COLOR) }
-        return cacheNightColor
-    }
-    fun saveNightColor(c: Int) { cacheNightColor = c; writeInt(KEY_NIGHT_COLOR, c) }
+    fun getNightColor(): Int = load(KEY_NIGHT_COLOR, DEFAULT_NIGHT_COLOR)
+    fun saveNightColor(c: Int) = save(KEY_NIGHT_COLOR, c)
 
     // ---- Off color ----
-    fun getOffColor(): Int {
-        ensure(KEY_OFF_COLOR) { cacheOffColor = readInt(KEY_OFF_COLOR, DEFAULT_OFF_COLOR) }
-        return cacheOffColor
-    }
-    fun saveOffColor(c: Int) { cacheOffColor = c; writeInt(KEY_OFF_COLOR, c) }
+    fun getOffColor(): Int = load(KEY_OFF_COLOR, DEFAULT_OFF_COLOR)
+    fun saveOffColor(c: Int) = save(KEY_OFF_COLOR, c)
 
     fun resetAllColors() {
         savePrimaryColor(DEFAULT_PRIMARY_COLOR)
@@ -333,45 +240,32 @@ class DataStoreManager(context: Context) {
         }
     }
 
-    // Инициализирует кэш ключа один раз (блокирующее чтение только здесь).
-    private fun ensure(key: Preferences.Key<*>, init: () -> Unit) {
+    /**
+     * Типизированное чтение ключа: загружает значение в кэш ровно один раз
+     * (блокирующий read только при первом обращении), затем возвращает его,
+     * применяя необязательное ограничение (coerce).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> load(key: Preferences.Key<T>, default: T, coerce: (T) -> T = { it }): T {
         synchronized(loadedKeys) {
             if (key !in loadedKeys) {
-                init()
+                val read = runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
+                cache[key] = read as Any
                 loadedKeys.add(key)
             }
-            if (loadedKeys.isNotEmpty()) {
-                upgradeIfNeeded()
-            }
+            if (loadedKeys.isNotEmpty()) upgradeIfNeeded()
         }
+        return coerce(cache[key] as T)
     }
 
-    private fun readString(key: Preferences.Key<String>, default: String): String =
-        runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
-
-    private fun readBool(key: Preferences.Key<Boolean>, default: Boolean): Boolean =
-        runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
-
-    private fun readInt(key: Preferences.Key<Int>, default: Int): Int =
-        runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
-
-    private fun readFloat(key: Preferences.Key<Float>, default: Float): Float =
-        runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
-
-    // Все записи — в фоне, не блокируют вызывающий поток.
-    private fun writeString(key: Preferences.Key<String>, value: String) {
-        writeScope.launch { store.edit { it[key] = value } }
-    }
-
-    private fun writeBool(key: Preferences.Key<Boolean>, value: Boolean) {
-        writeScope.launch { store.edit { it[key] = value } }
-    }
-
-    private fun writeInt(key: Preferences.Key<Int>, value: Int) {
-        writeScope.launch { store.edit { it[key] = value } }
-    }
-
-    private fun writeFloat(key: Preferences.Key<Float>, value: Float) {
-        writeScope.launch { store.edit { it[key] = value } }
+    /**
+     * Типизированная запись: обновляет кэш и уходит в фоновый scope
+     * (не блокирует вызывающий поток). Необязательный coerce применяется
+     * к значению как при сохранении, так и в кэше.
+     */
+    private fun <T> save(key: Preferences.Key<T>, value: T, coerce: (T) -> T = { it }) {
+        val v = coerce(value)
+        cache[key] = v as Any
+        writeScope.launch { store.edit { it[key] = v } }
     }
 }

@@ -78,8 +78,8 @@ fun HistoryCard(
                             }
                             PremiumIconButton(
                                 onClick = { showClearDialog = true },
-                                background = Color(0xFFFF5252).copy(alpha = 0.1f),
-                                contentColor = Color(0xFFFF5252)
+                                background = DesignTokens.Danger.copy(alpha = 0.1f),
+                                contentColor = DesignTokens.Danger
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
@@ -206,7 +206,7 @@ fun HistoryCard(
                         showClearDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF5252),
+                        containerColor = DesignTokens.Danger,
                         contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(14.dp)
@@ -281,8 +281,8 @@ private fun HistoryRecordRow(
         // Круглая кнопка удаления
         PremiumIconButton(
             onClick = onDelete,
-            background = Color(0xFFFF5252).copy(alpha = 0.1f),
-            contentColor = Color(0xFFFF5252)
+            background = DesignTokens.Danger.copy(alpha = 0.1f),
+            contentColor = DesignTokens.Danger
         ) {
             Icon(
                 imageVector = Icons.Default.Delete,

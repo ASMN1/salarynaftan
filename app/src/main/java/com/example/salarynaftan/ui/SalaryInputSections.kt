@@ -33,9 +33,9 @@ fun MonthSelector(
     val months = MonthlyNorms.list
     var expanded by remember { mutableStateOf(false) }
     var yearExpanded by remember { mutableStateOf(false) }
-    // Единый диапазон лет с проверенными нормами из таблицы (MonthlyNorms),
-    // чтобы не предлагать годы без точного производственного календаря.
-    val years = MonthlyNorms.supportedYears().toList()
+    // 2026 оставляем доступным: для него норма берётся по умолчанию из
+    // MonthlyNorms.list. Годы 2027+ — из таблицы точных норм (supportedYears).
+    val years = (2026..2035).toList()
     val primary = MaterialTheme.colorScheme.primary
 
     PremiumSectionCard {
@@ -146,7 +146,7 @@ fun ExpandableSection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
-    val dangerColor = Color(0xFFFF5252)
+    val dangerColor = DesignTokens.Danger
     val accentColor = if (danger) dangerColor else MaterialTheme.colorScheme.primary
 
     PremiumSectionCard {

@@ -45,11 +45,19 @@ fun AlarmsTabScreen() {
     val scheduler = koinInject<AlarmScheduler>()
     var selectedBrigade by remember { mutableStateOf(settingsManager.getBrigade()) }
 
+    // Оставляем карточку про автозапуск, только если приложение ещё
+    // ограничено оптимизацией батареи — после исключения она скрывается.
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+    var batteryOptimized by remember {
+        mutableStateOf(!powerManager.isIgnoringBatteryOptimizations(context.packageName))
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 selectedBrigade = settingsManager.getBrigade()
+                batteryOptimized = !powerManager.isIgnoringBatteryOptimizations(context.packageName)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -76,8 +84,8 @@ fun AlarmsTabScreen() {
         // Xiaomi/MIUI, Huawei/EMUI, Oppo/ColorOS, Vivo/Funtouch агрессивно
         // убивают фоновые процессы, из-за чего точные будильники могут не
         // сработать даже с разрешением exact alarm. Показываем совет только
-        // на таких прошивках.
-        if (isAggressiveBatteryOem()) {
+        // на таких прошивках и пока оптимизация батареи не отключена.
+        if (isAggressiveBatteryOem() && batteryOptimized) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -102,11 +110,13 @@ fun AlarmsTabScreen() {
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                     )
                     TextButton(onClick = {
-                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = android.net.Uri.fromParts("package", context.packageName, null)
-                        })
+                        context.startActivity(
+                            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                            }
+                        )
                     }) {
-                        Text("Открыть настройки приложения", color = Color(0xFFFFA726), fontWeight = FontWeight.Bold)
+                        Text("Настроить автозапуск", color = Color(0xFFFFA726), fontWeight = FontWeight.Bold)
                     }
                 }
             }

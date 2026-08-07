@@ -14,4 +14,30 @@
 
     <!-- Диалог экспорта графика -->
     <string name="export_schedule_title">📤 Экспорт графика</string>
+
+    <!-- Экран зарплаты: секции и поля -->
+    <string name="salary_section_salary_settings">Оклад и коэффициенты</string>
+    <string name="salary_field_salary">Оклад</string>
+    <string name="salary_field_premium">Премия, %%</string>
+    <string name="salary_field_stazh">Стаж, %%</string>
+    <string name="salary_field_pps">ППС, %%</string>
+    <string name="salary_save">💾 Сохранить</string>
+    <string name="salary_saved">Сохранено</string>
+    <string name="salary_err_salary_positive">Оклад должен быть положительным числом</string>
+    <string name="salary_err_premium_range">Коэф. премии — от 0 до 200%%</string>
+    <string name="salary_err_stazh_range">Коэф. стажа — от 0 до 200%%</string>
+    <string name="salary_err_pps_range">ППС — от 0 до 100%%</string>
+    <string name="salary_section_work_time">Рабочее время</string>
+    <string name="salary_field_prazdn_auto">Праздн. (авто)</string>
+    <string name="salary_field_children">Детей</string>
+    <string name="salary_section_premiums">Премии и доп. выплаты</string>
+    <string name="salary_field_za_otsutstvuushego">За отсутств. (руб)</string>
+    <string name="salary_field_kvartalka">Кварталка (руб)</string>
+    <string name="salary_field_mm_deti">МП на детей до 3л (баз.вел.)</string>
+    <string name="salary_section_deductions">Удержания и невыходы</string>
+    <string name="salary_field_gazeta">Газета (руб)</string>
+    <string name="salary_field_pozhertvovanja">Пожертв. (руб)</string>
+    <string name="salary_field_subbotnik">Субботник (руб)</string>
+    <string name="salary_field_stravita">Стравита (руб)</string>
+    <string name="salary_calculate">Рассчитать</string>
 </resources>

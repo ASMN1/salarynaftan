@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -225,6 +226,10 @@ fun MainAppScreen(
         mutableIntStateOf(activity?.intent?.getIntExtra("selected_tab", 0) ?: 0)
     }
 
+    // Сохраняет состояние каждой вкладки (выбранный месяц, раскрытые секции,
+    // введённые поля) при переключении и повороте экрана (п.5.1 анализа).
+    val saveableStateHolder = rememberSaveableStateHolder()
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { AppNotificationHost() },
@@ -298,30 +303,32 @@ fun MainAppScreen(
                 },
                 label = "tab_animation"
             ) { tab ->
-                // Адаптивный контейнер: на широких/альбомных экранах
-                // центрирует контент, ограничивая ширину (удобство на планшетах).
-                AdaptiveContent {
-                    when (tab) {
-                        0 -> ScheduleScreen(
-                            isDarkTheme = isDarkTheme,
-                            onThemeChange = onThemeChange,
-                            primaryColor = primaryColor
-                        )
-                        1 -> SalaryCalculatorScreen(
-                            isDarkTheme = isDarkTheme
-                        )
-                        2 -> SettingsScreen(
-                            isDarkTheme = isDarkTheme,
-                            onThemeChange = onThemeChange,
-                            onColorsChange = onColorsChange,
-                            currentPrimaryColor = primaryColor,
-                            currentBackgroundColor = backgroundColor,
-                            currentSurfaceColor = surfaceColor,
-                            uiScale = uiScale,
-                            onUiScaleChange = onUiScaleChange
-                        )
-                        3 -> AlarmsTabScreen()  // <-- ИСПРАВЛЕНО: теперь без параметров
-                        4 -> AboutScreen()
+                // Сохраняем состояние вкладки (месяц, раскрытые секции, ввод),
+                // чтобы табы не сбрасывались при переключении/повороте.
+                saveableStateHolder.SaveableStateProvider(key = tab) {
+                    AdaptiveContent {
+                        when (tab) {
+                            0 -> ScheduleScreen(
+                                isDarkTheme = isDarkTheme,
+                                onThemeChange = onThemeChange,
+                                primaryColor = primaryColor
+                            )
+                            1 -> SalaryCalculatorScreen(
+                                isDarkTheme = isDarkTheme
+                            )
+                            2 -> SettingsScreen(
+                                isDarkTheme = isDarkTheme,
+                                onThemeChange = onThemeChange,
+                                onColorsChange = onColorsChange,
+                                currentPrimaryColor = primaryColor,
+                                currentBackgroundColor = backgroundColor,
+                                currentSurfaceColor = surfaceColor,
+                                uiScale = uiScale,
+                                onUiScaleChange = onUiScaleChange
+                            )
+                            3 -> AlarmsTabScreen()  // <-- ИСПРАВЛЕНО: теперь без параметров
+                            4 -> AboutScreen()
+                        }
                     }
                 }
             }

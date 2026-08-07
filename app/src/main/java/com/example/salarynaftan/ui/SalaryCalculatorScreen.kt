@@ -37,6 +37,8 @@ fun SalaryCalculatorScreen(
     val availableYears by historyManager.availableYears.collectAsState()
     val selectedFilterYear by historyManager.selectedFilterYear.collectAsState()
     val primary = MaterialTheme.colorScheme.primary
+    // Общие строки-подписи, используемые в onClick-лямбдах (не @Composable)
+    val msgSaved = stringResource(R.string.salary_saved)
 
     // История грузится при показе экрана и при возврате на вкладку (ON_RESUME),
     // чтобы подхватывать изменения, сделанные из другого места (п.4.6).
@@ -77,7 +79,7 @@ fun SalaryCalculatorScreen(
 
         // ===== НАСТРОЙКИ ОКЛАДА И КОЭФФИЦИЕНТОВ =====
         ExpandableSection(
-            title = "Оклад и коэффициенты",
+            title = stringResource(R.string.salary_section_salary_settings),
             initiallyExpanded = true
         ) {
             // rememberSaveable — чтобы введённые, но не сохранённые значения
@@ -88,24 +90,30 @@ fun SalaryCalculatorScreen(
             var ppsText by rememberSaveable { mutableStateOf(String.format(Locale.US, "%.1f", settings.getPpsPercent())) }
             var saveError by remember { mutableStateOf<String?>(null) }
 
+            // Строки валидации, доступные и внутри onClick-лямбды (не @Composable)
+            val vErrSalary = stringResource(R.string.salary_err_salary_positive)
+            val vErrPremium = stringResource(R.string.salary_err_premium_range)
+            val vErrStazh = stringResource(R.string.salary_err_stazh_range)
+            val vErrPps = stringResource(R.string.salary_err_pps_range)
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 InputFieldWithText(
                     value = salaryText, onValueChange = { salaryText = it; saveError = null },
-                    label = "Оклад", icon = "💰", modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.salary_field_salary), icon = "💰", modifier = Modifier.weight(1f)
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 InputFieldWithText(
                     value = premiumText, onValueChange = { premiumText = it; saveError = null },
-                    label = "Премия, %", icon = "📊", modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.salary_field_premium), icon = "📊", modifier = Modifier.weight(1f)
                 )
                 InputFieldWithText(
                     value = stazhText, onValueChange = { stazhText = it; saveError = null },
-                    label = "Стаж, %", icon = "📈", modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.salary_field_stazh), icon = "📈", modifier = Modifier.weight(1f)
                 )
                 InputFieldWithText(
                     value = ppsText, onValueChange = { ppsText = it; saveError = null },
-                    label = "ППС, %", icon = "🏦", modifier = Modifier.weight(1f)
+                    label = stringResource(R.string.salary_field_pps), icon = "🏦", modifier = Modifier.weight(1f)
                 )
             }
             OutlinedButton(
@@ -116,10 +124,10 @@ fun SalaryCalculatorScreen(
                     val ppsPct = ppsText.replace(',', '.').replace(' ', '.').toDoubleOrNull()
                     // Валидация с понятным сообщением вместо молчаливого игнора (п.6.3)
                     saveError = when {
-                        sal == null || sal <= 0 -> "Оклад должен быть положительным числом"
-                        premPct == null || premPct < 0 || premPct > 200 -> "Коэф. премии — от 0 до 200%"
-                        stazhPct == null || stazhPct < 0 || stazhPct > 200 -> "Коэф. стажа — от 0 до 200%"
-                        ppsPct == null || ppsPct < 0 || ppsPct > 100 -> "ППС — от 0 до 100%"
+                        sal == null || sal <= 0 -> vErrSalary
+                        premPct == null || premPct < 0 || premPct > 200 -> vErrPremium
+                        stazhPct == null || stazhPct < 0 || stazhPct > 200 -> vErrStazh
+                        ppsPct == null || ppsPct < 0 || ppsPct > 100 -> vErrPps
                         else -> null
                     }
                     if (saveError == null && sal != null && premPct != null && stazhPct != null && ppsPct != null) {
@@ -127,18 +135,18 @@ fun SalaryCalculatorScreen(
                         settings.savePremiumCoef(premPct / 100.0); premiumText = percentInput(premPct / 100.0)
                         settings.saveStazhKoef(stazhPct / 100.0); stazhText = percentInput(stazhPct / 100.0)
                         settings.savePpsPercent(ppsPct); ppsText = String.format(Locale.US, "%.1f", ppsPct)
-                        AppNotifier.show("Сохранено")
+                        AppNotifier.show(msgSaved)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text("💾 Сохранить", fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 2.dp))
+                Text(stringResource(R.string.salary_save), fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 2.dp))
             }
             saveError?.let { err ->
                 Text(
                     text = "⚠️  $err",
-                    color = Color(0xFFFF5252),
+                    color = DesignTokens.Danger,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp)
@@ -147,50 +155,42 @@ fun SalaryCalculatorScreen(
         }
 
         // ===== СЕКЦИЯ 1: РАБОЧЕЕ ВРЕМЯ =====
-        ExpandableSection(title = "Рабочее время", initiallyExpanded = true) {
+        ExpandableSection(title = stringResource(R.string.salary_section_work_time), initiallyExpanded = true) {
             // Норма часов и праздничные часы рассчитываются автоматически
             // из справочника (MonthlyNorms) и календаря (Holidays) — вручную
-            // не вводятся. Показываем их только для справки.
-            val monthIndex = uiState.selectedMonthIndex
-            val year = uiState.selectedYear
-            val autoNorm = MonthlyNorms.norm(year, monthIndex).toInt()
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputFieldWithText(
-                    value = "$autoNorm", onValueChange = {},
-                    label = "Норма (авто)", icon = "🕐", modifier = Modifier.weight(1f)
-                )
-                InputFieldWithText(
-                    value = uiState.prazdnHours, onValueChange = {},
-                    label = "Праздн. (авто)", icon = "🎉", modifier = Modifier.weight(1f)
-                )
-            }
+            // не вводятся. Показываем только праздничные часы для справки;
+            // поле нормы убрано, т.к. не меняется вручную.
+            InputFieldWithText(
+                value = uiState.prazdnHours, onValueChange = {},
+                label = stringResource(R.string.salary_field_prazdn_auto), icon = "🎉", modifier = Modifier.fillMaxWidth()
+            )
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                InputFieldWithText(value = uiState.childrenCountInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.CHILDREN_COUNT, it) }, label = "Детей", icon = "👶", modifier = Modifier.width(120.dp))
+                InputFieldWithText(value = uiState.childrenCountInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.CHILDREN_COUNT, it) }, label = stringResource(R.string.salary_field_children), icon = "👶", modifier = Modifier.width(120.dp))
                 Spacer(modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { viewModel.saveCurrentMonth(); AppNotifier.show("Сохранено") }, shape = RoundedCornerShape(14.dp)) {
-                    Text("💾 Сохранить", fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = { viewModel.saveCurrentMonth(); AppNotifier.show(msgSaved) }, shape = RoundedCornerShape(14.dp)) {
+                    Text(stringResource(R.string.salary_save), fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
         // ===== СЕКЦИЯ 2: ПРЕМИИ И ВЫПЛАТЫ =====
-        ExpandableSection(title = "Премии и доп. выплаты", initiallyExpanded = false) {
+        ExpandableSection(title = stringResource(R.string.salary_section_premiums), initiallyExpanded = false) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputFieldWithText(value = uiState.zaOtsutstvuushego, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.ZA_OTSUTSTVUUSHEGO, it) }, label = "За отсутств. (руб)", icon = "👤", modifier = Modifier.weight(1f))
-                InputFieldWithText(value = uiState.kvartalka, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.KVARTALKA, it) }, label = "Кварталка (руб)", icon = "💰", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.zaOtsutstvuushego, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.ZA_OTSUTSTVUUSHEGO, it) }, label = stringResource(R.string.salary_field_za_otsutstvuushego), icon = "👤", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.kvartalka, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.KVARTALKA, it) }, label = stringResource(R.string.salary_field_kvartalka), icon = "💰", modifier = Modifier.weight(1f))
             }
-            InputFieldWithText(value = uiState.mmDetiCountInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.MM_DETI, it) }, label = "МП на детей до 3л (баз.вел.)", icon = "👪", modifier = Modifier.fillMaxWidth())
+            InputFieldWithText(value = uiState.mmDetiCountInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.MM_DETI, it) }, label = stringResource(R.string.salary_field_mm_deti), icon = "👪", modifier = Modifier.fillMaxWidth())
         }
 
         // ===== СЕКЦИЯ 3: УДЕРЖАНИЯ =====
-        ExpandableSection(title = "Удержания и невыходы", initiallyExpanded = false, danger = true) {
+        ExpandableSection(title = stringResource(R.string.salary_section_deductions), initiallyExpanded = false, danger = true) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputFieldWithText(value = uiState.gazetaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.GAZETA, it) }, label = "Газета (руб)", icon = "📰", modifier = Modifier.weight(1f))
-                InputFieldWithText(value = uiState.pozhertvovanjaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.POZHERTVOVANJA, it) }, label = "Пожертв. (руб)", icon = "❤️", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.gazetaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.GAZETA, it) }, label = stringResource(R.string.salary_field_gazeta), icon = "📰", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.pozhertvovanjaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.POZHERTVOVANJA, it) }, label = stringResource(R.string.salary_field_pozhertvovanja), icon = "❤️", modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InputFieldWithText(value = uiState.subbotnikInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.SUBBOTNIK, it) }, label = "Субботник (руб)", icon = "🧹", modifier = Modifier.weight(1f))
-                InputFieldWithText(value = uiState.stravitaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.STRAVITA, it) }, label = "Стравита (руб)", icon = "🏥", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.subbotnikInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.SUBBOTNIK, it) }, label = stringResource(R.string.salary_field_subbotnik), icon = "🧹", modifier = Modifier.weight(1f))
+                InputFieldWithText(value = uiState.stravitaInput, onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.STRAVITA, it) }, label = stringResource(R.string.salary_field_stravita), icon = "🏥", modifier = Modifier.weight(1f))
             }
         }
 
@@ -198,12 +198,12 @@ fun SalaryCalculatorScreen(
         if (uiState.errorMessage != null) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                color = Color(0xFFFF5252).copy(alpha = 0.12f),
+                color = DesignTokens.Danger.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(
                     text = "⚠️  ${uiState.errorMessage!!}",
-                    color = Color(0xFFFF5252),
+                    color = DesignTokens.Danger,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -213,7 +213,7 @@ fun SalaryCalculatorScreen(
 
         // ===== КНОПКА РАССЧИТАТЬ =====
         PremiumButton(
-            text = "Рассчитать",
+            text = stringResource(R.string.salary_calculate),
             icon = "🧮",
             onClick = { viewModel.performCalculation() },
             modifier = Modifier
@@ -234,7 +234,15 @@ fun SalaryCalculatorScreen(
                 historyManager = historyManager,
                 stazhPercent = (settings.getStazhKoef() * 100).toInt(),
                 premiumPercent = (settings.getPremiumCoef() * 100).toInt(),
-                pensionPercent = settings.getPpsPercent().toInt()
+                pensionPercent = settings.getPpsPercent().toInt(),
+                onPrevMonth = {
+                    val idx = (uiState.selectedMonthIndex - 1 + 12) % 12
+                    viewModel.selectMonth(idx)
+                },
+                onNextMonth = {
+                    val idx = (uiState.selectedMonthIndex + 1) % 12
+                    viewModel.selectMonth(idx)
+                }
             )
         }
 

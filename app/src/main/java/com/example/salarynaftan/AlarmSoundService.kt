@@ -184,7 +184,13 @@ class AlarmSoundService : Service() {
                 putExtra(EXTRA_VOLUME, volume)
                 putExtra(EXTRA_RAMP_SEC, rampSec)
             }
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: Exception) {
+                // Android 12+: запуск FGS из фона запрещён (без "иммунитета" будильника).
+                // Не даём упасть — просто логируем, звук не удастся воспроизвести в фоне.
+                Timber.e(e, "Не удалось запустить фоновый сервис звука будильника")
+            }
         }
 
         fun stop(context: Context) {

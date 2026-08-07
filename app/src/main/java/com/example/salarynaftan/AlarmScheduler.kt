@@ -22,7 +22,8 @@ import java.time.ZoneId
  * все места вызова (UI, receivers, DI, тесты) продолжают работать без изменений.
  */
 class AlarmScheduler(private val context: Context) {
-    private val shiftScheduler = ShiftAlarmScheduler(context)
+    private val settingsManager = SettingsManager(context)
+    private val shiftScheduler = ShiftAlarmScheduler(context, settingsManager)
     private val regularScheduler = RegularAlarmScheduler(context)
     private val autoSilenceScheduler = AutoSilenceScheduler(context)
 

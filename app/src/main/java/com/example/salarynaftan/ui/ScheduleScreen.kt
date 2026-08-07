@@ -22,6 +22,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,7 +50,6 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -111,53 +111,14 @@ fun ScheduleScreen(
         }
     }
 
-    fun toggleVacationDay(day: Int, month: YearMonth) {
-        val key = "${month.year}-${month.monthValue}"
-        val current = loadVacationDays(month).toMutableSet()
-        if (day in current) current.remove(day) else current.add(day)
-        vacationDaysMap = vacationDaysMap + (key to current)
-        coroutineScope.launch {
-            salaryRepository.saveVacationDays(month.year, month.monthValue - 1, current)
-        }
-    }
+    // ===== Отпуск: отдельное окно с датами «от» и «до» =====
+    var showVacationDialog by remember { mutableStateOf(false) }
+    var vacationFrom by remember { mutableStateOf(today) }
+    var vacationTo by remember { mutableStateOf(today) }
 
-    // ===== Выделение/снятие отпуска диапазоном =====
-    var rangeModeActive by remember { mutableStateOf(false) }
-    var rangeRemoveActive by remember { mutableStateOf(false) }
-    var rangeStartDate by remember { mutableStateOf<LocalDate?>(null) }
-    var rangeEndDate by remember { mutableStateOf<LocalDate?>(null) }
-
-    // Количество дней в выбранном диапазоне (для предпросмотра)
-    val rangeDayCount: Int? = run {
-        val s = rangeStartDate ?: return@run null
-        val e = rangeEndDate ?: return@run null
-        val begin = if (s.isBefore(e)) s else e
-        val end = if (s.isBefore(e)) e else s
-        ChronoUnit.DAYS.between(begin, end).toInt() + 1
-    }
-
-    fun handleRangeTap(date: LocalDate) {
-        if (rangeStartDate == null) {
-            rangeStartDate = date
-            rangeEndDate = null
-            return
-        }
-        rangeEndDate = date
-        // Диалог подтверждения открывается по rangeEndDate
-    }
-
-    fun cancelRange() {
-        rangeStartDate = null
-        rangeEndDate = null
-        rangeModeActive = false
-        rangeRemoveActive = false
-    }
-
-    fun applyRange() {
-        val start = rangeStartDate ?: return
-        val end = rangeEndDate ?: return
-        val begin = if (start.isBefore(end)) start else end
-        val finish = if (start.isBefore(end)) end else start
+    fun applyVacation(remove: Boolean) {
+        val begin = if (vacationFrom.isBefore(vacationTo)) vacationFrom else vacationTo
+        val finish = if (vacationFrom.isBefore(vacationTo)) vacationTo else vacationFrom
         val toProcess = mutableMapOf<String, MutableSet<Int>>()
         var d = begin
         while (!d.isAfter(finish)) {
@@ -165,18 +126,17 @@ fun ScheduleScreen(
             toProcess.getOrPut(key) { mutableSetOf() }.add(d.dayOfMonth)
             d = d.plusDays(1)
         }
-        val removing = rangeRemoveActive
         toProcess.forEach { (key, days) ->
             val y = key.substringBefore("-").toInt()
             val m = key.substringAfter("-").toInt()
             coroutineScope.launch {
                 val current = salaryRepository.getVacationDays(y, m - 1).toMutableSet()
-                if (removing) current.removeAll(days) else current.addAll(days)
+                if (remove) current.removeAll(days) else current.addAll(days)
                 salaryRepository.saveVacationDays(y, m - 1, current)
                 vacationDaysMap = vacationDaysMap + (key to current)
             }
         }
-        cancelRange()
+        showVacationDialog = false
     }
 
     var exactAlarmsAllowed by remember { mutableStateOf(scheduler.canScheduleExactAlarms()) }
@@ -221,8 +181,8 @@ fun ScheduleScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF5252).copy(alpha = 0.12f)),
-                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = DesignTokens.Danger.copy(alpha = 0.12f)),
+                border = BorderStroke(1.dp, DesignTokens.Danger.copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Row(
@@ -232,7 +192,7 @@ fun ScheduleScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("⚠️ Точные будильники отключены", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF5252), modifier = Modifier.weight(1f))
+                    Text("⚠️ Точные будильники отключены", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignTokens.Danger, modifier = Modifier.weight(1f))
                     Button(
                         onClick = {
                             context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
@@ -274,49 +234,19 @@ fun ScheduleScreen(
             onExportClick = { showExportDialog = true },
             loadMissedDays = { month -> loadMissedDays(month) },
             loadVacationDays = { month -> loadVacationDays(month) },
-            onDayClick = { day, month -> toggleMissedDay(day, month) },
-            onVacationClick = { day, month -> toggleVacationDay(day, month) },
-            rangeModeActive = rangeModeActive,
-            rangeRemoveActive = rangeRemoveActive,
-            onToggleRangeMode = {
-                cancelRange()
-                rangeModeActive = true
-            },
-            onToggleRangeRemove = {
-                cancelRange()
-                rangeRemoveActive = true
-            },
-            onRangeDateTap = { date -> handleRangeTap(date) },
-            rangeStartDate = rangeStartDate
+            onDayClick = { day, month -> toggleMissedDay(day, month) }
         )
 
-        // Диалог подтверждения диапазона отпуска
-        if (rangeStartDate != null && rangeEndDate != null) {
-            val count = rangeDayCount ?: 0
-            val isRemoving = rangeRemoveActive
-            AlertDialog(
-                onDismissRequest = { cancelRange() },
-                title = { Text(if (isRemoving) "Снять отпуск?" else "Выделить отпуск?", fontSize = 14.sp) },
-                text = {
-                    Text(
-                        if (isRemoving)
-                            "Снять отпуск с $count дн. (с ${rangeStartDate} по ${rangeEndDate})?"
-                        else
-                            "Пометить $count дн. отпуском (с ${rangeStartDate} по ${rangeEndDate})?",
-                        fontSize = 13.sp
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { applyRange() }) {
-                        Text("Да", color = if (isRemoving) Color(0xFFFF5252) else Color(0xFF00E676), fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { cancelRange() }) {
-                        Text("Отмена", color = Color.Gray)
-                    }
-                }
-            )
+        // Кнопка управления отпуском (отдельное окно с датами от/до)
+        Button(
+            onClick = { showVacationDialog = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = primaryColor.copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Text("☀ Отпуск", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
 
         // Итоги месяца
@@ -328,6 +258,9 @@ fun ScheduleScreen(
             vacationDays = loadVacationDays(visibleMonth),
             settingsManager = settingsManager
         )
+
+        // Праздники месяца (с названиями)
+        HolidaysCard(visibleMonth = visibleMonth, primaryColor = primaryColor)
 
         // Значки (легенда) — компактная справочная карточка
         ScheduleLegend()
@@ -347,6 +280,59 @@ fun ScheduleScreen(
             month = visibleMonth,
             brigade = viewingBrigade,
             onDismiss = { showExportDialog = false }
+        )
+    }
+
+    if (showVacationDialog) {
+        AlertDialog(
+            onDismissRequest = { showVacationDialog = false },
+            title = { Text("Отпуск", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Выберите даты отпуска (от и до).", fontSize = 13.sp)
+                    OutlinedButton(
+                        onClick = {
+                            android.app.DatePickerDialog(
+                                context,
+                                { _, y, m, d -> vacationFrom = LocalDate.of(y, m + 1, d) },
+                                vacationFrom.year, vacationFrom.monthValue - 1, vacationFrom.dayOfMonth
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("От: ${vacationFrom.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            android.app.DatePickerDialog(
+                                context,
+                                { _, y, m, d -> vacationTo = LocalDate.of(y, m + 1, d) },
+                                vacationTo.year, vacationTo.monthValue - 1, vacationTo.dayOfMonth
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("До: ${vacationTo.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { applyVacation(false) }) {
+                    Text("Отметить", color = DesignTokens.Success, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { applyVacation(true) }) {
+                        Text("Снять", color = DesignTokens.Danger, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = { showVacationDialog = false }) {
+                        Text("Отмена", color = Color.Gray)
+                    }
+                }
+            }
         )
     }
 }

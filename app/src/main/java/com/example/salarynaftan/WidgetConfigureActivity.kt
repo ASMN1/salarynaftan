@@ -1,5 +1,6 @@
 package com.example.salarynaftan
 
+import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
@@ -7,9 +8,16 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 
-class WidgetConfigureActivity : AppCompatActivity() {
+/**
+ * Экран настройки виджета (выбор бригады).
+ *
+ * Наследует обычный [Activity], а не AppCompatActivity: в манифесте ему
+ * назначена тема `android:Theme.Material.Light.NoActionBar`, а AppCompatActivity
+ * требует AppCompat-тему и падал бы с IllegalArgumentException при добавлении
+ * виджета. Вид строится программно, поэтому AppCompat не нужен.
+ */
+class WidgetConfigureActivity : Activity() {
 
     private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
 

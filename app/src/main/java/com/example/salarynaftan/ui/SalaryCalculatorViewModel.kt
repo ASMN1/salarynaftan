@@ -52,16 +52,16 @@ class SalaryCalculatorViewModel(
     init {
         val savedIndex = savedStateHandle.get<Int>("selectedMonthIndex")
             ?: settingsManager.getSelectedMonthIndex()
-        // Текущий системный год может выходить за диапазон таблицы норм
-        // (supportedYears); кладём выбор в поддерживаемый диапазон.
-        val supported = MonthlyNorms.supportedYears()
         val savedYear = savedStateHandle.get<Int>("selectedYear")
             ?: java.time.LocalDate.now().year
-        val year = savedYear.coerceIn(supported.first, supported.last)
+        // Сохраняем выбранный год как есть — без принудительного приведения
+        // к диапазону таблицы норм (supportedYears). Иначе год за пределами
+        // таблицы (например 2026) незаметно меняется, и расчёт премии идёт
+        // по чужому году (премия считается по прошлому месяцу этого года).
         _uiState.update {
-            it.copy(selectedMonthIndex = savedIndex, selectedYear = year)
+            it.copy(selectedMonthIndex = savedIndex, selectedYear = savedYear)
         }
-        loadMonthData(savedIndex, year)
+        loadMonthData(savedIndex, savedYear)
     }
 
     fun selectMonth(index: Int) {
@@ -69,7 +69,9 @@ class SalaryCalculatorViewModel(
             // Сохраняем текущий ввод до переключения, чтобы начисления/вычеты
             // не терялись, если пользователь переключил месяц без «Сохранить»
             // (BUG: потеря несохранённых начислений).
-            viewModelScope.launch { saveCurrentMonthData() }
+            viewModelScope.launch {
+                try { saveCurrentMonthData() } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
+            }
             savedStateHandle["selectedMonthIndex"] = index
             settingsManager.saveSelectedMonthIndex(index)
             _uiState.update { it.copy(selectedMonthIndex = index) }
@@ -79,7 +81,9 @@ class SalaryCalculatorViewModel(
 
     fun selectYear(year: Int) {
         if (year != _uiState.value.selectedYear) {
-            viewModelScope.launch { saveCurrentMonthData() }
+            viewModelScope.launch {
+                try { saveCurrentMonthData() } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
+            }
             savedStateHandle["selectedYear"] = year
             _uiState.update { it.copy(selectedYear = year) }
             loadMonthData(_uiState.value.selectedMonthIndex, year)
@@ -91,54 +95,61 @@ class SalaryCalculatorViewModel(
     // вызова, а не обновлённое после старта (исправление гонки данных).
     private fun loadMonthData(monthIndex: Int, year: Int) {
         viewModelScope.launch {
-            val month = months.getOrNull(monthIndex) ?: return@launch
-            val saved = salaryRepository.getMonthData(year, monthIndex)
+            try {
+                val month = months.getOrNull(monthIndex) ?: return@launch
+                val saved = salaryRepository.getMonthData(year, monthIndex)
 
-            // Норма часов и праздничные — всегда берутся автоматически:
-            // норма из справочника по году (MonthlyNorms), праздничные из
-            // календаря (Holidays). Ручной ввод этих полей убран — значения
-            // не меняются и всегда согласованы с графиком.
-            val norm = MonthlyNorms.norm(year, monthIndex).toString()
-            val holidayHours = SalaryCalculator.monthStats(
-                year = year,
-                monthIndex = monthIndex,
-                brigade = settingsManager.getBrigade(),
-                missedDays = emptySet(),
-                vacationDays = emptySet()
-            ).holidayHours
-            val prazdn = if (holidayHours > 0) holidayHours.toString() else "0"
-            val otsut = saved?.zaOtsutstvuushego ?: ""
-            val kvart = saved?.kvartalka ?: ""
-            val gaz = saved?.gazetaInput ?: "0"
-            val poz = saved?.pozhertvovanjaInput ?: "0"
-            val sub = saved?.subbotnikInput ?: "0"
-            val mmdeti = saved?.mmDetiCountInput ?: "0"
-            val children = saved?.childrenCountInput ?: "0"
-            val stravita = saved?.stravitaInput ?: "0"
+                // Норма часов и праздничные — всегда берутся автоматически:
+                // норма из справочника по году (MonthlyNorms), праздничные из
+                // календаря (Holidays). Ручной ввод этих полей убран — значения
+                // не меняются и всегда согласованы с графиком.
+                val norm = MonthlyNorms.norm(year, monthIndex).toString()
+                val holidayHours = SalaryCalculator.monthStats(
+                    year = year,
+                    monthIndex = monthIndex,
+                    brigade = settingsManager.getBrigade(),
+                    missedDays = emptySet(),
+                    vacationDays = emptySet()
+                ).holidayHours
+                val prazdn = if (holidayHours > 0) holidayHours.toString() else "0"
+                val otsut = saved?.zaOtsutstvuushego ?: ""
+                val kvart = saved?.kvartalka ?: ""
+                val gaz = saved?.gazetaInput ?: "0"
+                val poz = saved?.pozhertvovanjaInput ?: "0"
+                val sub = saved?.subbotnikInput ?: "0"
+                val mmdeti = saved?.mmDetiCountInput ?: "0"
+                val children = saved?.childrenCountInput ?: "0"
+                val stravita = saved?.stravitaInput ?: "0"
 
-            _uiState.update {
-                it.copy(
-                    selectedMonthIndex = monthIndex,
-                    selectedYear = year,
-                    normHours = norm,
-                    prazdnHours = prazdn,
-                    zaOtsutstvuushego = otsut,
-                    kvartalka = kvart,
-                    gazetaInput = gaz,
-                    pozhertvovanjaInput = poz,
-                    subbotnikInput = sub,
-                    mmDetiCountInput = mmdeti,
-                    childrenCountInput = children,
-                    stravitaInput = stravita,
-                    errorMessage = null,
-                    showResults = false,
-                    calculationResult = null
-                )
+                _uiState.update {
+                    it.copy(
+                        selectedMonthIndex = monthIndex,
+                        selectedYear = year,
+                        normHours = norm,
+                        prazdnHours = prazdn,
+                        zaOtsutstvuushego = otsut,
+                        kvartalka = kvart,
+                        gazetaInput = gaz,
+                        pozhertvovanjaInput = poz,
+                        subbotnikInput = sub,
+                        mmDetiCountInput = mmdeti,
+                        childrenCountInput = children,
+                        stravitaInput = stravita,
+                        errorMessage = null,
+                        showResults = false,
+                        calculationResult = null
+                    )
+                }
+            } catch (e: Exception) {
+                AppNotifier.showError("Не удалось загрузить данные месяца: ${e.message}")
             }
         }
     }
 
     fun updateField(field: SalaryField, value: String) {
+        // Ранняя валидация ввода: не даём ввести число больше допустимого предела,
+        // чтобы ошибка выявлялась при вводе, а не при расчёте (п.6.3 анализа).
+        val digitsOnly = value.filter { it.isDigit() }
         _uiState.update { current ->
             when (field) {
                 SalaryField.ZA_OTSUTSTVUUSHEGO -> current.copy(zaOtsutstvuushego = value)
@@ -146,8 +157,10 @@ class SalaryCalculatorViewModel(
                 SalaryField.GAZETA -> current.copy(gazetaInput = value)
                 SalaryField.POZHERTVOVANJA -> current.copy(pozhertvovanjaInput = value)
                 SalaryField.SUBBOTNIK -> current.copy(subbotnikInput = value)
-                SalaryField.MM_DETI -> current.copy(mmDetiCountInput = value)
-                SalaryField.CHILDREN_COUNT -> current.copy(childrenCountInput = value)
+                SalaryField.MM_DETI ->
+                    current.copy(mmDetiCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_MM_DETI } == true) value else current.mmDetiCountInput)
+                SalaryField.CHILDREN_COUNT ->
+                    current.copy(childrenCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_CHILDREN } == true) value else current.childrenCountInput)
                 SalaryField.STRAVITA -> current.copy(stravitaInput = value)
             }
         }
@@ -155,41 +168,45 @@ class SalaryCalculatorViewModel(
 
     fun performCalculation() {
         viewModelScope.launch {
-            val state = uiState.value
+            try {
+                val state = uiState.value
 
-            // ---- Валидация входных данных перед расчётом ----
-            val errors = mutableListOf<String>()
-            val norm = parseNonNegative(state.normHours)
-            val prazdn = parseNonNegative(state.prazdnHours)
-            val children = parseNonNegative(state.childrenCountInput)
-            val mmDeti = parseNonNegative(state.mmDetiCountInput)
-            if (norm <= 0) errors.add("Норма часов должна быть больше нуля")
-            if (norm > MAX_NORM_HOURS) errors.add("Норма часов слишком велика (max $MAX_NORM_HOURS)")
-            if (norm < MIN_NORM_HOURS) errors.add("Норма часов слишком мала (мин $MIN_NORM_HOURS)")
-            if (prazdn > norm && norm > 0) errors.add("Праздничных часов не может быть больше нормы")
-            if (children > MAX_CHILDREN) errors.add("Некорректное число детей (max $MAX_CHILDREN)")
-            if (mmDeti > MAX_MM_DETI) errors.add("Некорректное число базовых величин на детей (max $MAX_MM_DETI)")
+                // ---- Валидация входных данных перед расчётом ----
+                val errors = mutableListOf<String>()
+                val norm = parseNonNegative(state.normHours)
+                val prazdn = parseNonNegative(state.prazdnHours)
+                val children = parseNonNegative(state.childrenCountInput)
+                val mmDeti = parseNonNegative(state.mmDetiCountInput)
+                if (norm <= 0) errors.add("Норма часов должна быть больше нуля")
+                if (norm > MAX_NORM_HOURS) errors.add("Норма часов слишком велика (max $MAX_NORM_HOURS)")
+                if (norm < MIN_NORM_HOURS) errors.add("Норма часов слишком мала (мин $MIN_NORM_HOURS)")
+                if (prazdn > norm && norm > 0) errors.add("Праздничных часов не может быть больше нормы")
+                if (children > MAX_CHILDREN) errors.add("Некорректное число детей (max $MAX_CHILDREN)")
+                if (mmDeti > MAX_MM_DETI) errors.add("Некорректное число базовых величин на детей (max $MAX_MM_DETI)")
 
-            if (errors.isNotEmpty()) {
-                _uiState.update {
-                    it.copy(errorMessage = errors.joinToString("\n"), showResults = false, calculationResult = null)
+                if (errors.isNotEmpty()) {
+                    _uiState.update {
+                        it.copy(errorMessage = errors.joinToString("\n"), showResults = false, calculationResult = null)
+                    }
+                    return@launch
                 }
-                return@launch
-            }
 
-            val result = calculateForState(state)
-            if (result.error != null) {
-                _uiState.update { it.copy(errorMessage = result.error, showResults = false) }
-            } else {
-                _uiState.update {
-                    it.copy(
-                        errorMessage = null,
-                        showResults = true,
-                        calculationResult = result
-                    )
+                val result = calculateForState(state)
+                if (result.error != null) {
+                    _uiState.update { it.copy(errorMessage = result.error, showResults = false) }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = null,
+                            showResults = true,
+                            calculationResult = result
+                        )
+                    }
                 }
+                saveCurrentMonthData()
+            } catch (e: Exception) {
+                AppNotifier.showError("Не удалось выполнить расчёт: ${e.message}")
             }
-            saveCurrentMonthData()
         }
     }
 
@@ -243,7 +260,10 @@ class SalaryCalculatorViewModel(
     }
 
     fun saveCurrentMonth() {
-        viewModelScope.launch { saveCurrentMonthData() }
+        viewModelScope.launch {
+            try { saveCurrentMonthData(); AppNotifier.show("Сохранено") }
+            catch (e: Exception) { AppNotifier.showError("Не удалось сохранить: ${e.message}") }
+        }
     }
 
     private suspend fun saveCurrentMonthData() {

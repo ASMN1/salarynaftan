@@ -92,6 +92,19 @@ class SettingsManager(context: Context) {
         appContext.getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, android.content.Context.MODE_PRIVATE)
             .edit().putInt(PreferenceKeys.BRIGADE_KEY, brigade).apply()
         ShiftWidgetProvider.triggerUpdate(appContext)
+        // Авто-тишина проверяет «отсыпной день» по активной бригаде: при её смене
+        // пересчитываем/переустанавливаем таймеры, чтобы тишина не осталась
+        // настроенной под старую бригаду (п.4 анализа).
+        val autoPrefs = appContext.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, android.content.Context.MODE_PRIVATE)
+        if (autoPrefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)) {
+            val start = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
+            val end = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
+            try {
+                AlarmScheduler(appContext).updateAutoSilenceAlarms(true, start, end)
+            } catch (_: Exception) {
+                // Невалидное время/доступ — пропускаем, тишина просто сохранит прежние таймеры.
+            }
+        }
     }
 
     // ----- ОКЛАД -----

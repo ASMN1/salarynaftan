@@ -90,6 +90,9 @@ dependencies {
     // Timber — удобное логирование в приложении
     implementation(libs.timber)
 
+    // WorkManager — надёжное фоновое ежедневное обновление виджета
+    implementation(libs.androidx.work.runtime)
+
     // Тесты
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

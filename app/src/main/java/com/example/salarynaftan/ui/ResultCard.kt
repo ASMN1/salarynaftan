@@ -2,12 +2,18 @@ package com.example.salarynaftan.ui
 import com.example.salarynaftan.*
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,7 +40,9 @@ fun ResultCard(
     historyManager: HistoryManager,
     stazhPercent: Int = 25,
     premiumPercent: Int = 45,
-    pensionPercent: Int = 6
+    pensionPercent: Int = 6,
+    onPrevMonth: () -> Unit = {},
+    onNextMonth: () -> Unit = {}
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
@@ -44,8 +52,40 @@ fun ResultCard(
     val selectedYear = state.selectedYear
     val monthName = months.getOrNull(selectedMonthIndex)?.name ?: ""
 
+    // Плавный count-up анимация суммы «К ВЫПЛАТЕ» при появлении результата (п.1.6).
+    val animatedToPay = remember { Animatable(0f) }
+    LaunchedEffect(result.cleanToPay) {
+        animatedToPay.snapTo(0f)
+        animatedToPay.animateTo(
+            targetValue = result.cleanToPay.toFloat(),
+            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+        )
+    }
+
     PremiumSectionCard {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            // Быстрый переключатель месяца в результатах (п.3.6): позволяет
+            // одним тапом перейти на соседний месяц, не возвращаясь к верху.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onPrevMonth, enabled = selectedMonthIndex > 0) {
+                    Text("‹", fontSize = 20.sp, color = primary, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "$monthName $selectedYear",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                TextButton(onClick = onNextMonth, enabled = selectedMonthIndex < months.lastIndex) {
+                    Text("›", fontSize = 20.sp, color = primary, fontWeight = FontWeight.Bold)
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
             // Итоговая строка «К ВЫПЛАТЕ»
             Row(
                 modifier = Modifier
@@ -56,12 +96,12 @@ fun ResultCard(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
                 Text("К ВЫПЛАТЕ:", color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(MoneyFormatter.formatRub(result.cleanToPay), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                Text(MoneyFormatter.formatRub(animatedToPay.value.toDouble()), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            ResultSectionLabel("📈 Начисления", Color(0xFF00E676))
+            ResultSectionLabel("📈 Начисления", DesignTokens.Success)
             ResultRow("Оклад расчётный", result.okladReal)
             ResultRow("Надбавка за стаж ($stazhPercent%)", result.stazh)
             ResultRow("Доплата за вредность", result.vrednost)
@@ -83,7 +123,7 @@ fun ResultCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            ResultSectionLabel("🧾 Налоговая база", Color(0xFFFFA726))
+            ResultSectionLabel("🧾 Налоговая база", DesignTokens.TaxBase)
             ResultRow("Общая сумма", result.dirty)
             ResultRowGray("Налоговый вычет на детей (${displayInt(state.childrenCountInput)} дет.)", -result.childrenDeduction)
             if (result.mmDeti > 0) ResultRowGray("МП на детей (не облагается)", -result.mmDeti)
@@ -91,7 +131,7 @@ fun ResultCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            ResultSectionLabel("🔻 Удержания", Color(0xFFFF5252))
+            ResultSectionLabel("🔻 Удержания", DesignTokens.Danger)
             ResultRow("ФСЗН (1%)", result.fszn)
             ResultRow("Профсоюз (1%)", result.prof)
             ResultRow("Подоходный налог (13%)", result.podohodny)
@@ -107,13 +147,13 @@ fun ResultCard(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("ВСЕГО УДЕРЖАНО:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFFF5252))
-                Text(MoneyFormatter.formatRub(totalUderzhano), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFFF5252))
+                Text("ВСЕГО УДЕРЖАНО:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DesignTokens.Danger)
+                Text(MoneyFormatter.formatRub(totalUderzhano), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DesignTokens.Danger)
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
-            ResultSectionLabel("💰 Итоги", Color(0xFF00E676))
+            ResultSectionLabel("💰 Итоги", DesignTokens.Success)
             ResultRow("Всего чистыми за месяц", result.totalClean)
             ResultRow("Выплачено в аванс", -result.avans)
 

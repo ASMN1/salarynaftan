@@ -44,7 +44,7 @@ class HistoryManager(
     val selectedFilterYear: StateFlow<Int?> = _selectedFilterYear.asStateFlow()
 
     suspend fun refresh() {
-        _availableYears.value = repository.getAvailableYears()
+        // applyFilter уже обновляет и записи, и доступные годы.
         applyFilter()
     }
 

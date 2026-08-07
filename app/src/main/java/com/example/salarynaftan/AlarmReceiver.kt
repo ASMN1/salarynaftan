@@ -9,10 +9,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
-import android.util.Log
 import androidx.core.content.ContextCompat
-
-private const val TAG = "AlarmReceiver"
+import timber.log.Timber
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -85,14 +83,14 @@ class AlarmReceiver : BroadcastReceiver() {
                 try {
                     context.startActivity(ringIntent)
                 } catch (e: Exception) {
-                    Log.e(TAG, "startActivity не удался: ${e.message}", e)
+                    Timber.e(e, "startActivity не удался")
                 }
             }
 
             // Если нет разрешения на уведомления — всё равно пробуем запустить
             // активность напрямую (хотя на заблокированном экране это не сработает).
             if (kgm.isKeyguardLocked && !hasNotificationPermission) {
-                Log.w(TAG, "Будильник на заблокированном экране без разрешения POST_NOTIFICATIONS — не сработает")
+                Timber.w("Будильник на заблокированном экране без разрешения POST_NOTIFICATIONS — не сработает")
             }
 
             // Перепланирование сменных будильников (инкапсулировано в AlarmScheduler)
@@ -106,11 +104,11 @@ class AlarmReceiver : BroadcastReceiver() {
                         timeStr = alarmTime
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Ошибка перепланирования: ${e.message}", e)
+                    Timber.e(e, "Ошибка перепланирования")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка в AlarmReceiver: ${e.message}", e)
+            Timber.e(e, "Ошибка в AlarmReceiver")
         } finally {
             try { wakeLock.release() } catch (_: Exception) { }
             pendingResult.finish()

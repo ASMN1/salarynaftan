@@ -79,14 +79,7 @@ fun MonthCalendarPager(
     onExportClick: () -> Unit,
     loadMissedDays: (YearMonth) -> Set<Int>,
     loadVacationDays: (YearMonth) -> Set<Int>,
-    onDayClick: (Int, YearMonth) -> Unit,
-    onVacationClick: (Int, YearMonth) -> Unit,
-    rangeModeActive: Boolean,
-    rangeRemoveActive: Boolean,
-    onToggleRangeMode: () -> Unit,
-    onToggleRangeRemove: () -> Unit,
-    onRangeDateTap: (LocalDate) -> Unit,
-    rangeStartDate: LocalDate?
+    onDayClick: (Int, YearMonth) -> Unit
 ) {
     val today = remember { LocalDate.now() }
     val baseMonth = remember { YearMonth.now() }
@@ -126,7 +119,7 @@ fun MonthCalendarPager(
         shape = RoundedCornerShape(18.dp)
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Кнопки: Сегодня и режим выделения отпуска
+            // Кнопка: Сегодня (отпуск настраивается отдельным окном в ScheduleScreen)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -136,7 +129,7 @@ fun MonthCalendarPager(
                     onClick = onGoToToday,
                     shape = RoundedCornerShape(14.dp),
                     color = if (visibleMonth == YearMonth.now()) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-                    else Color(0xFF00E676),
+                    else DesignTokens.Success,
                     contentColor = if (visibleMonth == YearMonth.now()) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                     else Color.Black
                 ) {
@@ -146,40 +139,6 @@ fun MonthCalendarPager(
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                    )
-                }
-
-                Surface(
-                    onClick = onToggleRangeRemove,
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (rangeRemoveActive) Color(0xFFFF5252)
-                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                    contentColor = if (rangeRemoveActive) Color.Black
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                ) {
-                    Text(
-                        if (rangeRemoveActive) "Снять: нажмите конец" else "Снять отпуск",
-                        color = if (rangeRemoveActive) Color.Black else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                    )
-                }
-
-                Surface(
-                    onClick = onToggleRangeMode,
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (rangeModeActive) Color(0xFF40C4FF)
-                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                    contentColor = if (rangeModeActive) Color.Black
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                ) {
-                    Text(
-                        if (rangeModeActive) "Отпуск: нажмите конец" else "Выделить отпуск",
-                        color = if (rangeModeActive) Color.Black else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                     )
                 }
             }
@@ -342,12 +301,7 @@ fun MonthCalendarPager(
                     primaryColor = primaryColor,
                     missedDays = loadMissedDays(monthForPage),
                     vacationDays = loadVacationDays(monthForPage),
-                    onDayClick = { day -> onDayClick(day, monthForPage) },
-                    onVacationClick = { day -> onVacationClick(day, monthForPage) },
-                    rangeModeActive = rangeModeActive || rangeRemoveActive,
-                    isRangeRemoving = rangeRemoveActive,
-                    onRangeDateTap = { day -> onRangeDateTap(monthForPage.atDay(day)) },
-                    isRangeStart = rangeStartDate != null
+                    onDayClick = { day -> onDayClick(day, monthForPage) }
                 )
             }
         }
@@ -367,12 +321,7 @@ fun MonthGrid(
     primaryColor: Color,
     missedDays: Set<Int> = emptySet(),
     vacationDays: Set<Int> = emptySet(),
-    onDayClick: (Int) -> Unit = {},
-    onVacationClick: (Int) -> Unit = {},
-    rangeModeActive: Boolean = false,
-    isRangeRemoving: Boolean = false,
-    onRangeDateTap: (Int) -> Unit = {},
-    isRangeStart: Boolean = false
+    onDayClick: (Int) -> Unit = {}
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     val weekDays = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
@@ -412,7 +361,7 @@ fun MonthGrid(
                     text = day,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (day == "Сб" || day == "Вс") Color(0xFFFF5252) else Color.Gray,
+                    color = if (day == "Сб" || day == "Вс") DesignTokens.Weekend else Color.Gray,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center
                 )
@@ -447,12 +396,11 @@ fun MonthGrid(
                                 .padding(1.dp)
                                 .background(
                                     color = when {
-                                        isMissed -> Color(0xFFFF5252).copy(alpha = 0.7f)
-                                        isVacation -> Color(0xFF40C4FF).copy(alpha = 0.7f)
-                                        isHoliday -> Color(0xFFE040FB).copy(alpha = 0.28f)
-                                        isSalary -> Color(0xFFFFD600).copy(alpha = 0.25f)
-                                        isAdvance -> Color(0xFF00BFA5).copy(alpha = 0.25f)
-                                        rangeModeActive && isRangeStart -> Color(if (isRangeRemoving) 0xFFFF5252 else 0xFF40C4FF).copy(alpha = 0.35f)
+                                        isMissed -> DesignTokens.Danger.copy(alpha = 0.7f)
+                                        isVacation -> DesignTokens.Vacation.copy(alpha = 0.7f)
+                                        isHoliday -> DesignTokens.Holiday.copy(alpha = 0.28f)
+                                        isSalary -> DesignTokens.Salary.copy(alpha = 0.25f)
+                                        isAdvance -> DesignTokens.Advance.copy(alpha = 0.25f)
                                         else -> color.copy(alpha = 0.85f)
                                     },
                                     shape = RoundedCornerShape(4.dp)
@@ -467,11 +415,11 @@ fun MonthGrid(
                                     },
                                     color = when {
                                         isToday -> primaryColor
-                                        isMissed -> Color(0xFFFF5252)
-                                        isVacation -> Color(0xFF40C4FF)
-                                        isHoliday -> Color(0xFFE040FB)
-                                        isSalary -> Color(0xFFFFD600)
-                                        isAdvance -> Color(0xFF00BFA5)
+                                        isMissed -> DesignTokens.Danger
+                                        isVacation -> DesignTokens.Vacation
+                                        isHoliday -> DesignTokens.Holiday
+                                        isSalary -> DesignTokens.Salary
+                                        isAdvance -> DesignTokens.Advance
                                         else -> Color.Transparent
                                     },
                                     shape = RoundedCornerShape(4.dp)
@@ -494,11 +442,7 @@ fun MonthGrid(
                                     enabled = true, // клики и отпуск работают и на выходных
                                     onClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (rangeModeActive) {
-                                            onRangeDateTap(dayNumber)
-                                        } else {
-                                            onDayClick(dayNumber)
-                                        }
+                                        onDayClick(dayNumber)
                                     },
                                     onLongClick = {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -573,7 +517,7 @@ fun MonthGrid(
                                             text = if (isSalary) "ЗП" else "АВ",
                                             fontSize = 6.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = if (isSalary) Color(0xFFFFD600) else Color(0xFF00BFA5)
+                                            color = if (isSalary) DesignTokens.Salary else DesignTokens.Advance
                                         )
                                     }
                                 }
@@ -612,19 +556,19 @@ fun MonthGrid(
                         }
                     }
                     if (d == salaryDate) {
-                        Text("💰 День зарплаты", fontSize = 12.sp, color = Color(0xFFFFD600), fontWeight = FontWeight.Bold)
+                        Text("💰 День зарплаты", fontSize = 12.sp, color = DesignTokens.Salary, fontWeight = FontWeight.Bold)
                     }
                     if (d == advanceDate) {
-                        Text("💵 День аванса", fontSize = 12.sp, color = Color(0xFF00BFA5), fontWeight = FontWeight.Bold)
+                        Text("💵 День аванса", fontSize = 12.sp, color = DesignTokens.Advance, fontWeight = FontWeight.Bold)
                     }
                     if (Holidays.isHoliday(d)) {
-                        Text("🎉 Праздничный (нерабочий) день", fontSize = 12.sp, color = Color(0xFFE040FB), fontWeight = FontWeight.Bold)
+                        Text("🎉 Праздничный (нерабочий) день", fontSize = 12.sp, color = DesignTokens.Holiday, fontWeight = FontWeight.Bold)
                     }
                     if (d.dayOfMonth in vacationDays) {
-                        Text("☀ Отмечен отпуском", fontSize = 12.sp, color = Color(0xFF40C4FF), fontWeight = FontWeight.Bold)
+                        Text("☀ Отмечен отпуском", fontSize = 12.sp, color = DesignTokens.Vacation, fontWeight = FontWeight.Bold)
                     }
                     if (d.dayOfMonth in missedDays) {
-                        Text("✕ Отмечен невыходом", fontSize = 12.sp, color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                        Text("✕ Отмечен невыходом", fontSize = 12.sp, color = DesignTokens.Danger, fontWeight = FontWeight.Bold)
                     }
                 }
             },

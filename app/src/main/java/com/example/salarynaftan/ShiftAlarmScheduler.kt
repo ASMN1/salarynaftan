@@ -17,9 +17,17 @@ import java.time.ZoneId
  * Отделено от AlarmScheduler (п.3.3): этот класс отвечает только за сменный
  * распорядок и не знает об обычных будильниках или авто-тишине.
  */
-class ShiftAlarmScheduler(private val context: Context) {
+class ShiftAlarmScheduler(
+    private val context: Context,
+    injectedSettingsManager: SettingsManager? = null
+) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences(PreferenceKeys.ALARM_PREFS, Context.MODE_PRIVATE)
+
+    // SettingsManager инициализируется лениво — только при реальном доступе к
+    // настройкам пред-напоминания. Это позволяет unit-тестам создавать
+    // планировщик без реального Android-Контекста (DataStore).
+    private val settingsManager: SettingsManager by lazy { injectedSettingsManager ?: SettingsManager(context) }
 
     fun isAlarmScheduledForShift(type: ShiftType, brigade: Int): Boolean {
         return prefs.getBoolean("${PreferenceKeys.SHIFT_ALARM_ENABLED_PREFIX}${brigade}_${type.name}", false)
@@ -137,7 +145,7 @@ class ShiftAlarmScheduler(private val context: Context) {
 
         // Пред-напоминание о смене (п.6.7): если включено, ставим отдельный
         // сигнал за N минут до срабатывания основного будильника.
-        val reminderLead = SettingsManager(context).getShiftReminderMinutes()
+        val reminderLead = settingsManager.getShiftReminderMinutes()
         if (reminderLead > 0) {
             scheduleReminderAt(type, brigade, index, timeStr, targetDate, reminderLead)
         }
@@ -195,7 +203,7 @@ class ShiftAlarmScheduler(private val context: Context) {
      * день (начиная с завтра), в который выпадает эта смена.
      */
     fun rescheduleShiftReminder(type: ShiftType, brigade: Int, index: Int, timeStr: String) {
-        val lead = SettingsManager(context).getShiftReminderMinutes()
+        val lead = settingsManager.getShiftReminderMinutes()
         if (lead <= 0) return
         var targetDate = LocalDate.now().plusDays(1)
         var attempts = 0

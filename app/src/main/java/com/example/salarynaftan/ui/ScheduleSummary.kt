@@ -106,14 +106,14 @@ fun MonthlyStatsCard(
                 }
                 if (overtimeHours > 0) {
                     Surface(
-                        color = Color(0xFFFFA726).copy(alpha = 0.18f),
+                        color = DesignTokens.TaxBase.copy(alpha = 0.18f),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
                             text = "+${overtimeHours.toInt()} ч",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFFA726),
+                            color = DesignTokens.TaxBase,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
@@ -134,13 +134,13 @@ fun MonthlyStatsCard(
                 StatTile(
                     label = "Факт часов",
                     value = "${factHours.toInt()} ч",
-                    color = if (overtimeHours > 0) Color(0xFFFFA726) else primaryColor,
+                    color = if (overtimeHours > 0) DesignTokens.TaxBase else primaryColor,
                     modifier = Modifier.weight(1f)
                 )
                 StatTile(
                     label = "Праздничные",
                     value = "${holidayHours.toInt()} ч",
-                    color = if (holidayHours > 0) Color(0xFFE040FB) else Color.Gray,
+                    color = if (holidayHours > 0) DesignTokens.Holiday else DesignTokens.Neutral,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -154,14 +154,14 @@ fun MonthlyStatsCard(
                     label = "Ночные часы",
                     value = "${nightHoursTotal.toInt()} ч",
                     subLabel = "$nightCount ночн. + $dayCount дневн. смен",
-                    color = Color(0xFF42A5F5),
+                    color = DesignTokens.Night,
                     modifier = Modifier.weight(1f)
                 )
                 StatTile(
                     label = "Аванс",
                     value = "≈ ${String.format(Locale.US, "%.0f", advanceAmount)} руб",
                     subLabel = "$shiftsBefore15 смен до 15-го",
-                    color = Color(0xFF00BFA5),
+                    color = DesignTokens.Advance,
                     modifier = Modifier.weight(1f)
                 )
                 StatTile(
@@ -176,9 +176,9 @@ fun MonthlyStatsCard(
                         vacationDays.isNotEmpty() -> "отпуск ${vacationDays.size * 8} ч"
                         else -> "OFF смен"
                     },
-                    color = if (missedDays.isNotEmpty()) Color(0xFFFF5252)
-                    else if (vacationDays.isNotEmpty()) Color(0xFF40C4FF)
-                    else Color.Gray,
+                    color = if (missedDays.isNotEmpty()) DesignTokens.Danger
+                    else if (vacationDays.isNotEmpty()) DesignTokens.Vacation
+                    else DesignTokens.Neutral,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -202,9 +202,9 @@ fun MonthlyStatsCard(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = when {
-                            animatedProgress >= 1.0f -> Color(0xFF00E676)
-                            animatedProgress >= 0.8f -> Color(0xFFFFA726)
-                            else -> Color(0xFFFF5252)
+                            animatedProgress >= 1.0f -> DesignTokens.Success
+                            animatedProgress >= 0.8f -> DesignTokens.TaxBase
+                            else -> DesignTokens.Danger
                         }
                     )
                 }
@@ -216,9 +216,9 @@ fun MonthlyStatsCard(
                         .height(8.dp)
                         .clip(RoundedCornerShape(4.dp)),
                     color = when {
-                        animatedProgress >= 1.0f -> Color(0xFF00E676)
-                        animatedProgress >= 0.8f -> Color(0xFFFFA726)
-                        else -> Color(0xFFFF5252)
+                        animatedProgress >= 1.0f -> DesignTokens.Success
+                        animatedProgress >= 0.8f -> DesignTokens.TaxBase
+                        else -> DesignTokens.Danger
                     },
                     trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 )
@@ -269,44 +269,78 @@ fun StatTile(
 // ЛЕГЕНДА И СПРАВКА ГРАФИКА СМЕН
 // ==========================================
 
-/** Справочная карточка «значки» — что означают цвета и пометки в календаре. */
+/** Справочная карточка «Значки и цвета» — сворачиваемая, как «Как пользоваться графиком». */
 @Composable
 fun ScheduleLegend() {
+    var expanded by remember { mutableStateOf(false) }
     PremiumSectionCard {
         Column {
-            PremiumSectionTitle(
-                icon = "🎨",
-                title = "Значки и цвета",
-                subtitle = "Что означают цвета и пометки в календаре"
-            )
-            PremiumDivider()
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Цвета смен
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                LegendItem("У", ShiftType.MORNING.color, "Утро", Modifier.weight(1f))
-                LegendItem("Д", ShiftType.DAY.color, "День", Modifier.weight(1f))
-                LegendItem("Н", ShiftType.NIGHT.color, "Ночь", Modifier.weight(1f))
-                LegendItem("В", ShiftType.OFF.color, "Выходной", Modifier.weight(1f))
+                Text("🎨", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Значки и цвета",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (expanded) "▲" else "▼",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
+            androidx.compose.animation.AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PremiumDivider()
+                    Spacer(modifier = Modifier.height(4.dp))
 
-            // Пометки дат
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 3.dp)
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                LegendBadge("💰", Color(0xFFFFD600), "ЗП · 10-е", Modifier.weight(1f))
-                LegendBadge("💵", Color(0xFF00BFA5), "Аванс · 25-е", Modifier.weight(1f))
-                LegendBadge("☀", Color(0xFF40C4FF), "Отпуск", Modifier.weight(1f))
-                LegendBadge("✕", Color(0xFFFF5252), "Невыход", Modifier.weight(1f))
+                    // Цвета смен
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        LegendItem("У", ShiftType.MORNING.color, "Утро", Modifier.weight(1f))
+                        LegendItem("Д", ShiftType.DAY.color, "День", Modifier.weight(1f))
+                        LegendItem("Н", ShiftType.NIGHT.color, "Ночь", Modifier.weight(1f))
+                        LegendItem("В", ShiftType.OFF.color, "Выходной", Modifier.weight(1f))
+                    }
+
+                    // Пометки дат
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        LegendBadge("💰", DesignTokens.Salary, "ЗП · 10-е*", Modifier.weight(1f))
+                        LegendBadge("💵", DesignTokens.Advance, "Аванс · 25-е*", Modifier.weight(1f))
+                        LegendBadge("☀", DesignTokens.Vacation, "Отпуск", Modifier.weight(1f))
+                        LegendBadge("✕", DesignTokens.Danger, "Невыход", Modifier.weight(1f))
+                    }
+
+                    // Сноска: если день выплаты выпадает на выходной, он сдвигается
+                    // на ближайший предыдущий рабочий день (пятницу).
+                    Text(
+                        text = "* Если 10-е/25-е выпадают на выходной — сдвигается на пятницу.",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
         }
     }
@@ -419,10 +453,8 @@ fun ScheduleHelpBlock() {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     HelpRow("👆 Тап по дню", "Пометить день невыходом (✕). Повторный тап — снять.")
-                    HelpRow("👆 Долгий тап по дню", "Пометить день отпуском (☀). Повторный — снять.")
-                    HelpRow("📅 Выделить отпуск", "Нажмите «Выделить отпуск», затем первый и последний день диапазона.")
-                    HelpRow("✨ Снять отпуск", "Аналогично, но кнопка «Снять отпуск» уберёт отпуск за диапазон.")
-                    HelpRow("💰 💵", "Дни зарплаты (10-е) и аванса (25-е), сдвигаются на пятницу, если выпали на выходные.")
+                    HelpRow("☀ Кнопка «Отпуск»", "Откройте окно, выберите даты «от» и «до», нажмите «Отметить» или «Снять».")
+                    HelpRow("💰 💵", "Дни зарплаты (10-е) и аванса (25-е). Если день выпал на выходной, выплата сдвигается на пятницу.")
                     HelpRow("👥 Бригада", "Выберите номер бригады, чтобы посмотреть её график смен.")
                 }
             }
@@ -443,3 +475,52 @@ private fun HelpRow(icon: String, text: String) {
         )
     }
 }
+
+// ==========================================
+// ПРАЗДНИКИ МЕСЯЦА (С НАЗВАНИЯМИ)
+// ==========================================
+
+@Composable
+fun HolidaysCard(visibleMonth: YearMonth, primaryColor: Color) {
+    val holidays = Holidays.holidaysInMonth(visibleMonth.year, visibleMonth.monthValue - 1)
+    if (holidays.isEmpty()) return
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, DesignTokens.Holiday.copy(alpha = 0.35f)),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🎉", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Праздники месяца",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            holidays.forEach { (day, name) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "$day ${visibleMonth.getMonth().getDisplayName(java.time.format.TextStyle.FULL, Locale("ru"))}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DesignTokens.Holiday,
+                        modifier = Modifier.width(120.dp)
+                    )
+                    Text(
+                        text = name,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+

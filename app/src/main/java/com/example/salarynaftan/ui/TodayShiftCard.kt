@@ -47,6 +47,17 @@ fun TodayShiftCard(
     val today = remember { LocalDate.now() }
     val shift = remember(brigade) { ShiftSchedule.shiftFor(today, brigade) }
 
+    // Настраиваемые цвета смен из ColorSettingsManager — те же, что в календаре
+    // (единый источник, п.1.2). Без понимания, что цвет изменили в настройках,
+    // карточка «Сегодня» показывала бы устаревший оттенок.
+    val colorSettings = org.koin.compose.koinInject<ColorSettingsManager>()
+    val shiftColor = when (shift) {
+        ShiftType.MORNING -> colorSettings.getMorningColor()
+        ShiftType.DAY -> colorSettings.getDayColor()
+        ShiftType.NIGHT -> colorSettings.getNightColor()
+        ShiftType.OFF -> colorSettings.getOffColor()
+    }
+
     // Текущее время, обновляется 1 раз в минуту для обратного отсчёта
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
@@ -54,13 +65,6 @@ fun TodayShiftCard(
             now = LocalDateTime.now()
             delay(60_000)
         }
-    }
-
-    val shiftColor = when (shift) {
-        ShiftType.MORNING -> Color(0xFFFEE45B)
-        ShiftType.DAY -> Color(0xFFA2D39C)
-        ShiftType.NIGHT -> Color(0xFF4F6D91)
-        ShiftType.OFF -> Color(0xFF9E9E9E)
     }
 
     val endTime = shift.endDateTime(today)
