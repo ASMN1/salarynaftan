@@ -4,20 +4,18 @@
    Резервируем пользовательские данные приложения:
    - БД Room (salarynaftan.db, истории и данные месяцев);
    - SharedPreferences (настройки будильников, бригады, авто-тишины);
-   - DataStore Preferences (settings.preferences_pb);
-   - файловый кэш экспортов НЕ бэкапим (воспроизводится заново).
+   - DataStore Preferences (settings.preferences_pb).
+   Кэш экспортов не входит в include, поэтому не бэкапится (воспроизводится заново).
 -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="database" path="salarynaftan.db" />
         <include domain="sharedpref" path="." />
         <include domain="file" path="datastore/" />
-        <exclude domain="file" path="cache/" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="salarynaftan.db" />
         <include domain="sharedpref" path="." />
         <include domain="file" path="datastore/" />
-        <exclude domain="file" path="cache/" />
     </device-transfer>
 </data-extraction-rules>

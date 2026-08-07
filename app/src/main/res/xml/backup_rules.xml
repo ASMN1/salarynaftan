@@ -2,11 +2,10 @@
 <!--
    Правила резервного копирования для Android < 12 (android:fullBackupContent).
    Дублируют data_extraction_rules.xml: резервируем БД Room, SharedPreferences
-   и DataStore Preferences; кэш экспортов исключаем.
+   и DataStore Preferences. Кэш экспортов не входит в include и не бэкапится.
 -->
 <full-backup-content>
     <include domain="database" path="salarynaftan.db" />
     <include domain="sharedpref" path="." />
     <include domain="file" path="datastore/" />
-    <exclude domain="file" path="cache/" />
 </full-backup-content>
