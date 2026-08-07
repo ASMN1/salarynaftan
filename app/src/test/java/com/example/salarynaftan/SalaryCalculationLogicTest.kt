@@ -148,4 +148,70 @@ class SalaryCalculationLogicTest {
         val result = performCalculate(monthInput(normHours = "0"), calcInputs())
         assertNotNull(result.error)
     }
+
+    // БУГ: праздничный день, в который сотрудника не было на работе (отпуск
+    // или невыход), НЕ должен начисляться как праздничный. Раньше расчёт брал
+    // полное число праздничных часов из поля «Праздн. (авто)» (без учёта
+    // пропусков), из-за чего праздничный день считался, хотя человека не было.
+    @Test
+    fun `holiday hours are skipped when the holiday day is missed or vacation`() {
+        // Выбираем месяц, в котором есть праздник, и находим его день.
+        // Расчёт идёт для всех месяцев и проверяет: если весь праздничный день
+        // помечен отпуском/невыходом, праздничные часы должны обратиться в 0.
+        var foundHoliday = false
+        for (year in 2026..2027) {
+            for (monthIndex in 0..11) {
+                val holidayDays = (1..java.time.YearMonth.of(year, monthIndex + 1).lengthOfMonth())
+                    .filter { Holidays.isHoliday(java.time.YearMonth.of(year, monthIndex + 1).atDay(it)) }
+                    .filter {
+                        // Только если в этот день по графику есть смена (не выходной)
+                        ShiftSchedule.shiftFor(java.time.YearMonth.of(year, monthIndex + 1).atDay(it), 1) != ShiftType.OFF
+                    }
+                if (holidayDays.isEmpty()) continue
+
+                foundHoliday = true
+
+                // Отмечаем ВСЕ праздничные дни этого месяца как пропущенные (отпуск).
+                val allMarked = holidayDays.toSet()
+
+                val withHoliday = performCalculate(
+                    month = monthInput(normHours = "170", prazdnHours = "8"),
+                    inputs = calcInputs(),
+                    year = year,
+                    monthIndex = monthIndex
+                )
+                val withAllHolidaysMarked = performCalculate(
+                    month = monthInput(normHours = "170", prazdnHours = "8"),
+                    inputs = calcInputs(
+                        // currentVacation в тестовом хелпере по умолчанию пусто — создаём с vacation
+                    ).let { h ->
+                        SalaryCalculator.CalcInputs(
+                            okladBase = h.okladBase,
+                            koefStazh = h.koefStazh,
+                            koefPrem = h.koefPrem,
+                            currentBrigade = h.currentBrigade,
+                            currentMissed = h.currentMissed,
+                            currentVacation = allMarked,
+                            prevMonthData = h.prevMonthData,
+                            prevMissed = h.prevMissed,
+                            prevVacation = h.prevVacation
+                        )
+                    },
+                    year = year,
+                    monthIndex = monthIndex
+                )
+
+                // Когда все праздничные дни пропущены, праздничные часы должны стать 0.
+                org.junit.Assert.assertEquals(
+                    "Праздничные часы должны быть 0, если все праздничные дни — отпуск (year=$year, month=$monthIndex)",
+                    0.0,
+                    withAllHolidaysMarked.prazdn,
+                    0.01
+                )
+                break
+            }
+            if (foundHoliday) break
+        }
+        org.junit.Assert.assertTrue("Не найден ни один праздничный рабочий день за 2026-2027", foundHoliday)
+    }
 }

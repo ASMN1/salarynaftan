@@ -180,8 +180,13 @@ object SalaryCalculator {
         val nightHours = (nShiftsVal * SHIFT_HOURS) + (s4ShiftsVal * DAY_SHIFT_NIGHT_BONUS_HOURS)
         val nochPay = (inputs.okladBase / normVal) * nightHours * KOEF_NOCH
 
-        // Праздничные: если пользователь не указал вручную — автоподстановка из календаря
-        val prazdnVal = if (monthData.prazdnHours > 0.0) monthData.prazdnHours else stats.holidayHours
+        // Праздничные часы всегда считаются автоматически из календаря по
+        // реально отработанным дням (stats.holidayHours уже исключает невыходы
+        // и отпуска). НЕ используем monthData.prazdnHours как источник: это
+        // значение хранит полное число праздничных часов без учёта пропусков
+        // (не пересчитывается при пометке дня), из-за чего праздничный день,
+        // в который сотрудника не было на работе, всё равно добавлялся.
+        val prazdnVal = stats.holidayHours
         val prazdn = (inputs.okladBase / normVal) * prazdnVal
 
         // Норма прошлого месяца: сохранённая (ручная) ИЛИ из справочника по году
