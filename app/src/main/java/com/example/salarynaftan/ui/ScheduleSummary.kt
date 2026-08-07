@@ -54,6 +54,9 @@ fun MonthlyStatsCard(
     settingsManager: SettingsManager
 ) {
     val monthIndex = visibleMonth.monthValue - 1
+    val scheduleType = settingsManager.getScheduleType()
+    val shiftHours = scheduleType.shiftHours
+    val dayShiftBonus = scheduleType.dayShiftNightBonusHours
     val normVal = MonthlyNorms.norm(visibleMonth.year, monthIndex)
 
     // Единый источник подсчёта итогов месяца — SalaryCalculator.monthStats
@@ -64,7 +67,8 @@ fun MonthlyStatsCard(
         monthIndex = monthIndex,
         brigade = selectedBrigade,
         missedDays = missedDays,
-        vacationDays = vacationDays
+        vacationDays = vacationDays,
+        scheduleType = scheduleType
     )
     val workDays = stats.workDaysInt
     val holidayHours = stats.holidayHours
@@ -73,12 +77,12 @@ fun MonthlyStatsCard(
     val morningCount = stats.morningCount
     val shiftsBefore15 = stats.advanceShifts.toInt()
 
-    val factHours = workDays * 8.0
-    val nightHoursTotal = (nightCount * 8.0) + (dayCount * 2.0)
+    val factHours = workDays * shiftHours
+    val nightHoursTotal = (nightCount * shiftHours) + (dayCount * dayShiftBonus)
     val overtimeHours = maxOf(0.0, factHours - normVal)
     val salary = settingsManager.getSalary()
     // Единая формула аванса из SalaryCalculator (как в расчёте зарплаты).
-    val advanceAmount = SalaryCalculator.advanceAmount(salary, normVal, shiftsBefore15)
+    val advanceAmount = SalaryCalculator.advanceAmount(salary, normVal, shiftsBefore15, shiftHours)
 
     Card(
         modifier = Modifier
@@ -171,9 +175,9 @@ fun MonthlyStatsCard(
                     else "${visibleMonth.lengthOfMonth() - workDays} дн.",
                     subLabel = when {
                         missedDays.isNotEmpty() && vacationDays.isNotEmpty() ->
-                            "${missedDays.size * 8 + vacationDays.size * 8} ч минус"
-                        missedDays.isNotEmpty() -> "${missedDays.size * 8} ч минус"
-                        vacationDays.isNotEmpty() -> "отпуск ${vacationDays.size * 8} ч"
+                            "${missedDays.size * shiftHours.toInt() + vacationDays.size * shiftHours.toInt()} ч минус"
+                        missedDays.isNotEmpty() -> "${missedDays.size * shiftHours.toInt()} ч минус"
+                        vacationDays.isNotEmpty() -> "отпуск ${vacationDays.size * shiftHours.toInt()} ч"
                         else -> "OFF смен"
                     },
                     color = if (missedDays.isNotEmpty()) DesignTokens.Danger

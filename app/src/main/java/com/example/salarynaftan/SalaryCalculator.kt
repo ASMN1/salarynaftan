@@ -54,7 +54,9 @@ object SalaryCalculator {
         val currentVacation: Set<Int>,
         val prevMonthData: MonthSalaryEntityLike?,
         val prevMissed: Set<Int>,
-        val prevVacation: Set<Int>
+        val prevVacation: Set<Int>,
+        /** Тип графика (№1/№2) — влияет на длительность смены и ночные часы. */
+        val scheduleType: ScheduleType = ScheduleType.GRAPH_1
     )
 
     /** Отработанные часы и смены за месяц с учётом отпусков/невыходов. */
@@ -80,9 +82,11 @@ object SalaryCalculator {
         monthIndex: Int,
         brigade: Int,
         missedDays: Set<Int>,
-        vacationDays: Set<Int>
+        vacationDays: Set<Int>,
+        scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
     ): MonthStats {
         val yearMonth = YearMonth.of(year, monthIndex + 1)
+        val shiftHours = scheduleType.shiftHours
         var workDays = 0.0
         var nightShifts = 0.0
         var dayShifts = 0.0
@@ -94,12 +98,12 @@ object SalaryCalculator {
 
         for (day in 1..yearMonth.lengthOfMonth()) {
             val date = yearMonth.atDay(day)
-            val shift = ShiftSchedule.shiftFor(date, brigade)
+            val shift = ShiftSchedule.shiftFor(date, brigade, scheduleType)
             if (shift == ShiftType.OFF) continue
             if (day in missedDays || day in vacationDays) continue
 
             workDays += 1.0
-            if (Holidays.isHoliday(date)) holidayHours += SHIFT_HOURS
+            if (Holidays.isHoliday(date)) holidayHours += shiftHours
             when (shift) {
                 ShiftType.NIGHT -> { nightShifts += 1.0; nightCount++ }
                 ShiftType.DAY -> { dayShifts += 1.0; dayCount++ }
@@ -125,12 +129,19 @@ object SalaryCalculator {
     }
 
     /** Количество промаркированных невыходами/отпуском РАБОЧИХ дней. */
-    private fun markedWorkDays(year: Int, monthIndex: Int, brigade: Int, missed: Set<Int>, vacation: Set<Int>): Int {
+    private fun markedWorkDays(
+        year: Int,
+        monthIndex: Int,
+        brigade: Int,
+        missed: Set<Int>,
+        vacation: Set<Int>,
+        scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
+    ): Int {
         val yearMonth = YearMonth.of(year, monthIndex + 1)
         var count = 0
         for (day in 1..yearMonth.lengthOfMonth()) {
             if (day in missed || day in vacation) {
-                val shift = ShiftSchedule.shiftFor(yearMonth.atDay(day), brigade)
+                val shift = ShiftSchedule.shiftFor(yearMonth.atDay(day), brigade, scheduleType)
                 if (shift != ShiftType.OFF) count++
             }
         }
@@ -142,8 +153,13 @@ object SalaryCalculator {
      * «График» (MonthlyStatsCard) и в PDF-экспортёрах, чтобы формула
      * (оклад / норма × смен-до-15-го × 8 ч) существовала в одном месте.
      */
-    fun advanceAmount(okladBase: Double, normHours: Double, shiftCountBefore15: Int): Double =
-        if (normHours > 0) (okladBase / normHours) * shiftCountBefore15 * SHIFT_HOURS else 0.0
+    fun advanceAmount(
+        okladBase: Double,
+        normHours: Double,
+        shiftCountBefore15: Int,
+        shiftHours: Double = ScheduleType.GRAPH_1.shiftHours
+    ): Double =
+        if (normHours > 0) (okladBase / normHours) * shiftCountBefore15 * shiftHours else 0.0
 
     /**
      * Полный расчёт зарплаты за месяц.
@@ -163,8 +179,12 @@ object SalaryCalculator {
         val prevMonthIndex = (monthIndex - 1 + 12) % 12
         val prevYear = if (monthIndex == 0) year - 1 else year
 
-        val stats = monthStats(year, monthIndex, inputs.currentBrigade, inputs.currentMissed, inputs.currentVacation)
-        val factVal = stats.workDays * SHIFT_HOURS
+        val scheduleType = inputs.scheduleType
+        val shiftHours = scheduleType.shiftHours
+        val dayShiftBonus = scheduleType.dayShiftNightBonusHours
+
+        val stats = monthStats(year, monthIndex, inputs.currentBrigade, inputs.currentMissed, inputs.currentVacation, scheduleType)
+        val factVal = stats.workDays * shiftHours
         val nShiftsVal = stats.nightShifts
         val s4ShiftsVal = stats.dayShifts
         val advShiftsVal = stats.advanceShifts
@@ -177,7 +197,7 @@ object SalaryCalculator {
         val okladReal = (inputs.okladBase / normVal) * factVal
         val stazh = okladReal * inputs.koefStazh
         val vrednost = VREDNOST_KOEF * factVal
-        val nightHours = (nShiftsVal * SHIFT_HOURS) + (s4ShiftsVal * DAY_SHIFT_NIGHT_BONUS_HOURS)
+        val nightHours = (nShiftsVal * shiftHours) + (s4ShiftsVal * dayShiftBonus)
         val nochPay = (inputs.okladBase / normVal) * nightHours * KOEF_NOCH
 
         // Праздничные часы всегда считаются автоматически из календаря по
@@ -197,9 +217,9 @@ object SalaryCalculator {
 
         // Факт прошлого месяца: вычисляем реальные часы по графику (без невыходов)
         // вместо хардкода из MonthlyNorms.list — корректно для любого года.
-        val prevStatsFull = monthStats(prevYear, prevMonthIndex, inputs.currentBrigade, emptySet(), emptySet())
-        val defaultPrevFact = prevStatsFull.workDays * SHIFT_HOURS
-        val prevMissedHours = markedWorkDays(prevYear, prevMonthIndex, inputs.currentBrigade, inputs.prevMissed, inputs.prevVacation) * SHIFT_HOURS
+        val prevStatsFull = monthStats(prevYear, prevMonthIndex, inputs.currentBrigade, emptySet(), emptySet(), scheduleType)
+        val defaultPrevFact = prevStatsFull.workDays * shiftHours
+        val prevMissedHours = markedWorkDays(prevYear, prevMonthIndex, inputs.currentBrigade, inputs.prevMissed, inputs.prevVacation, scheduleType) * shiftHours
         val premFactVal = maxOf(0.0, defaultPrevFact - prevMissedHours)
         val prem = (inputs.okladBase / prevNormVal) * premFactVal * inputs.koefPrem
 
@@ -214,7 +234,7 @@ object SalaryCalculator {
         val childrenDeduction = VYCHET_NA_ODNOGO_REBENKA * monthData.childrenCount
         val podohodnyBase = maxOf(0.0, dirty - childrenDeduction - mmDeti)
         val podohodny = podohodnyBase * INCOME_TAX_RATE
-        val avans = advanceAmount(inputs.okladBase, normVal, advShiftsVal.toInt())
+        val avans = advanceAmount(inputs.okladBase, normVal, advShiftsVal.toInt(), shiftHours)
         val totalClean = dirty - fszn - prof - podohodny -
                 monthData.gazetaInput - monthData.pozhertvovanjaInput -
                 monthData.subbotnikInput - monthData.stravitaInput

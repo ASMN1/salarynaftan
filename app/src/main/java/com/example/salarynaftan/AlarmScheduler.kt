@@ -135,9 +135,9 @@ class AlarmScheduler(private val context: Context) {
             getRegularAlarms().forEach { regularScheduler.cancelSingleRegularAlarm(it.id) }
         }
 
-        // Восстанавливаем будильники для ВСЕХ бригад, у которых они были включены,
-        // а не только для текущей. Ключи хранятся в формате "shift_alarm_<brigade>_<type>".
-        for (b in 1..5) {
+        // Восстанавливаем будильники для ВСЕХ бригад текущего графика, у которых
+        // они были включены. Ключи хранятся в формате "shift_alarm_<brigade>_<type>".
+        for (b in 1..ShiftSchedule.currentScheduleType.brigadeCount) {
             ShiftType.entries.forEach { type ->
                 if (isAlarmScheduledForShift(type, b)) {
                     attempt("сменная $b/${type.name}") {

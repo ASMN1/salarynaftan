@@ -27,6 +27,7 @@ class SettingsViewModel(
         val ringtoneName: String = "По умолчанию",
         val ringtoneUri: Uri? = null,
         val brigade: Int = 1,
+        val scheduleType: ScheduleType = ScheduleType.GRAPH_1,
         val primaryColor: Color = Color(0xFF00E676),
         val backgroundColor: Color = Color(0xFF121212),
         val surfaceColor: Color = Color(0xFF1E1E1E),
@@ -54,6 +55,7 @@ class SettingsViewModel(
                 ringtoneName = settingsManager.getRingtoneName(),
                 ringtoneUri = settingsManager.getRingtoneUri(),
                 brigade = settingsManager.getBrigade(),
+                scheduleType = settingsManager.getScheduleType(),
                 primaryColor = settingsManager.getPrimaryColor(),
                 backgroundColor = settingsManager.getBackgroundColor(),
                 surfaceColor = settingsManager.getSurfaceColor(),
@@ -86,6 +88,23 @@ class SettingsViewModel(
         settingsManager.setBrigade(brigade)
         // Гасим сменные будильники всех бригад и оставляем только активной (п.4.4)
         scheduler.switchActiveBrigade(brigade)
+    }
+
+    /** Переключение типа графика (№1/№2). Бригаду корректирует SettingsManager. */
+    fun setScheduleType(type: ScheduleType, scheduler: AlarmScheduler) {
+        if (_uiState.value.scheduleType == type) return
+        settingsManager.setScheduleType(type)
+        val correctedBrigade = settingsManager.getBrigade()
+        _uiState.update {
+            it.copy(scheduleType = type, brigade = correctedBrigade)
+        }
+        // Пересчитываем сменные будильники под новый график (другие бригады,
+        // другие времена/цикл) — иначе старые сигналы останутся висеть.
+        try {
+            scheduler.rescheduleAllAlarmsForBrigade(correctedBrigade)
+        } catch (_: Exception) {
+            // Невалидные настройки будильников не должны ронять экран настроек.
+        }
     }
 
     fun setTheme(isDark: Boolean, onThemeChange: (Boolean) -> Unit) {

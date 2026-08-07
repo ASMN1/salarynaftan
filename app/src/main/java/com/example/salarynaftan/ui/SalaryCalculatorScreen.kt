@@ -156,10 +156,18 @@ fun SalaryCalculatorScreen(
 
         // ===== СЕКЦИЯ 1: РАБОЧЕЕ ВРЕМЯ =====
         ExpandableSection(title = stringResource(R.string.salary_section_work_time), initiallyExpanded = true) {
-            // Норма часов и праздничные часы рассчитываются автоматически
-            // из справочника (MonthlyNorms) и календаря (Holidays) — вручную
-            // не вводятся. Показываем только праздничные часы для справки;
-            // поле нормы убрано, т.к. не меняется вручную.
+            // Для Графика №1 норма часов рассчитывается автоматически из справочника
+            // (MonthlyNorms), для Графика №2 таблица норм ещё не пришла — норма —
+            // поле ручного ввода (зависит от активного графика).
+            val scheduleType = settings.getScheduleType()
+            if (scheduleType == ScheduleType.GRAPH_2) {
+                InputFieldWithText(
+                    value = uiState.normHours,
+                    onValueChange = { viewModel.updateField(SalaryCalculatorViewModel.SalaryField.NORM_HOURS, it) },
+                    label = stringResource(R.string.salary_field_norm_manual), icon = "⏱️", modifier = Modifier.fillMaxWidth()
+                )
+            }
+            // Праздничные часы рассчитываются автоматически из календаря (Holidays).
             InputFieldWithText(
                 value = uiState.prazdnHours, onValueChange = {},
                 label = stringResource(R.string.salary_field_prazdn_auto), icon = "🎉", modifier = Modifier.fillMaxWidth()

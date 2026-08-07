@@ -88,10 +88,10 @@ class ShiftAlarmScheduler(
 
             // Ищем до конца цикла смен: длина цикла гарантирует, что нужный
             // тип смены встретится за один полный проход (детерминированный
-            // поиск вместо жёстких 11 попыток).
+            // поиск вместо жёстких 11 попыток). Длина зависит от графика.
             var attempts = 0
             while (ShiftSchedule.shiftFor(targetDate, brigade) != type &&
-                attempts < ShiftSchedule.SHIFT_CYCLE_SIZE
+                attempts < ShiftSchedule.cycleSizeFor()
             ) {
                 targetDate = targetDate.plusDays(1)
                 attempts++
@@ -208,7 +208,7 @@ class ShiftAlarmScheduler(
         var targetDate = LocalDate.now().plusDays(1)
         var attempts = 0
         while (ShiftSchedule.shiftFor(targetDate, brigade) != type &&
-            attempts < ShiftSchedule.SHIFT_CYCLE_SIZE
+            attempts < ShiftSchedule.cycleSizeFor()
         ) {
             targetDate = targetDate.plusDays(1)
             attempts++
@@ -253,7 +253,8 @@ class ShiftAlarmScheduler(
     }
 
     fun cancelAllShiftAlarmsAcrossAllBrigades() {
-        for (b in 1..5) {
+        val maxBrigade = ShiftSchedule.currentScheduleType.brigadeCount
+        for (b in 1..maxBrigade) {
             ShiftType.entries.forEach { type ->
                 cancelAlarmsForShiftQuiet(type, b)
             }

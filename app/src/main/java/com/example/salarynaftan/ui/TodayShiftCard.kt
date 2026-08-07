@@ -42,10 +42,11 @@ import java.util.Locale
 @Composable
 fun TodayShiftCard(
     brigade: Int,
-    primaryColor: Color
+    primaryColor: Color,
+    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
 ) {
     val today = remember { LocalDate.now() }
-    val shift = remember(brigade) { ShiftSchedule.shiftFor(today, brigade) }
+    val shift = remember(brigade, scheduleType) { ShiftSchedule.shiftFor(today, brigade, scheduleType) }
 
     // Настраиваемые цвета смен из ColorSettingsManager — те же, что в календаре
     // (единый источник, п.1.2). Без понимания, что цвет изменили в настройках,
@@ -67,7 +68,7 @@ fun TodayShiftCard(
         }
     }
 
-    val endTime = shift.endDateTime(today)
+    val endTime = ShiftSchedule.shiftEndDateTime(today, shift, scheduleType)
     val remaining = endTime?.let { java.time.Duration.between(now, it) }
     val isActive = endTime != null && remaining != null && !remaining.isNegative
 
@@ -118,7 +119,7 @@ fun TodayShiftCard(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Бригада $brigade" + (shift.startTime?.let { " · с ${it}" } ?: ""),
+                    text = "Бригада $brigade" + (ShiftSchedule.shiftStartTime(shift, scheduleType)?.let { " · с ${it}" } ?: ""),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -150,7 +151,7 @@ fun TodayShiftCard(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = shift.startTime?.let {
+                            text = ShiftSchedule.shiftStartTime(shift, scheduleType)?.let {
                                 if (it.isAfter(LocalDateTime.now().toLocalTime())) "сегодня с $it"
                                 else "завтра с $it"
                             } ?: "",

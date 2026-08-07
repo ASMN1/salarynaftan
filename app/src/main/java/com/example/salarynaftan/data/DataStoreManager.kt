@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.salarynaftan.ScheduleType
 import com.example.salarynaftan.ShiftType
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +53,7 @@ class DataStoreManager(context: Context) {
         private val KEY_BACKGROUND_COLOR = intPreferencesKey("background_color")
         private val KEY_SURFACE_COLOR = intPreferencesKey("surface_color")
         private val KEY_BRIGADE = intPreferencesKey("selected_brigade")
+        private val KEY_SCHEDULE_TYPE = stringPreferencesKey("schedule_type")
         private val KEY_SALARY = stringPreferencesKey("salary_oklad_double") // новый ключ: старый хранился как float
         private val KEY_PREMIUM_COEF = floatPreferencesKey("salary_premium_koef")
         private val KEY_STAZH_KOEF = floatPreferencesKey("salary_stazh_koef")
@@ -132,8 +134,17 @@ class DataStoreManager(context: Context) {
     fun saveSurfaceColor(c: Int) = save(KEY_SURFACE_COLOR, c)
 
     // ---- Brigade ----
-    fun getBrigade(): Int = load(KEY_BRIGADE, DEFAULT_BRIGADE) { it.coerceIn(1, 5) }
-    fun setBrigade(b: Int) = save(KEY_BRIGADE, b) { it.coerceIn(1, 5) }
+    /**
+     * Текущая бригада. Диапазон допустимых номеров зависит от выбранного
+     * графика (ScheduleType.brigadeCount), поэтому значение не коэрсится до
+     * 1..5 жёстко — иначе при переключении на График №2 бригада 5 не сохранилась бы.
+     */
+    fun getBrigade(): Int = load(KEY_BRIGADE, DEFAULT_BRIGADE) { it.coerceIn(1, ScheduleType.GRAPH_1.brigadeCount) }
+    fun setBrigade(b: Int) = save(KEY_BRIGADE, b) { it.coerceIn(1, ScheduleType.GRAPH_1.brigadeCount) }
+
+    // ---- Schedule type (График №1 / №2) ----
+    fun getScheduleType(): ScheduleType = ScheduleType.fromStorageName(load(KEY_SCHEDULE_TYPE, ScheduleType.GRAPH_1.storageName))
+    fun saveScheduleType(type: ScheduleType) = save(KEY_SCHEDULE_TYPE, type.storageName)
 
     // ---- Salary ----
     fun getSalary(): Double =

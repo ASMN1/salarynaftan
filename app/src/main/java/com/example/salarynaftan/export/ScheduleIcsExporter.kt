@@ -39,8 +39,10 @@ object ScheduleIcsExporter {
                 val shift = ShiftSchedule.shiftFor(date, brigade)
                 if (shift == ShiftType.OFF) continue
 
-                val sTime = shift.startTime ?: continue
-                val eTime = shift.endTime ?: continue
+                // Времена смены зависят от активного графика (в №2 смены 12-часовые).
+                val scheduleType = ShiftSchedule.currentScheduleType
+                val sTime = ShiftSchedule.shiftStartTime(shift, scheduleType) ?: continue
+                val eTime = ShiftSchedule.shiftEndTime(shift, scheduleType) ?: continue
 
                 val dateStr = date.format(DATE_FORMAT)
                 val sh = sTime.hour.toString().padStart(2, '0')
@@ -48,8 +50,9 @@ object ScheduleIcsExporter {
                 val eh = eTime.hour.toString().padStart(2, '0')
                 val em = eTime.minute.toString().padStart(2, '0')
 
-                // Если смена ночная (Н: 0:00–8:00), дата окончания = следующий день
-                val endDateStr = if (shift == ShiftType.NIGHT) {
+                // Если смена ночная (пересекает полночь, например Н: 0:00–8:00 в №1
+                // и 20:00–8:00 в №2), дата окончания = следующий день
+                val endDateStr = if (eTime.isBefore(sTime) || eTime == sTime) {
                     date.plusDays(1).format(DATE_FORMAT)
                 } else {
                     dateStr

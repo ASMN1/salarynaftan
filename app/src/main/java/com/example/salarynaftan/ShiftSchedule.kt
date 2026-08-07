@@ -1,21 +1,30 @@
 package com.example.salarynaftan
 
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
 
 object ShiftSchedule {
 
-    /**
-     * Базовая дата цикла смен. По умолчанию — 2026-01-01, но её можно
-     * переопределить из настроек (SettingsManager.saveAnchorDate / DataStore),
-     * чтобы график можно было сдвинуть без пересборки (№12). Изменение
-     * безопасно: формула одинакова для любой длины цикла и дат до/после базы.
-     * @Volatile — читается из разных потоков (UI, AlarmScheduler, Receivers).
-     */
+    /** Базовая дата цикла Графика №1 (5 бригад, 8 ч). */
     @Volatile
     var anchorDate: LocalDate = LocalDate.of(2026, 1, 1)
 
+    /** Базовая дата цикла Графика №2 (4 бригады, 12 ч). 2026-08-08 (пн задания). */
+    @Volatile
+    var anchorDateGraph2: LocalDate = LocalDate.of(2026, 8, 8)
+
+    /**
+     * Активный тип графика. Устанавливается вместе с сохранением настройки
+     * (SettingsManager.setScheduleType) и при старте приложения (App), чтобы
+     * все вызовы shiftFor без явного типа использовали выбранный график.
+     */
+    @Volatile
+    var currentScheduleType: ScheduleType = ScheduleType.GRAPH_1
+
+    // ===== График №1: 5 бригад, 8 ч (цикл 10 дней) =====
 
     private val CYCLE = listOf(
         ShiftType.OFF,
@@ -30,24 +39,20 @@ object ShiftSchedule {
         ShiftType.OFF
     )
 
-    // Валидация цикла при инициализации: пустой цикл привёл бы к делению
-    // на ноль в расчёте индекса. Падаем сразу, а не в рантайме (№13).
     private val CYCLE_SIZE: Long = require(CYCLE.isNotEmpty()) {
-        "Список смен (CYCLE) не должен быть пустым"
+        "Список смен Графика №1 (CYCLE) не должен быть пустым"
     }.let { CYCLE.size.toLong() }
 
-    /**
-     * Общедоступная длина цикла смен (дней). Используется, например, в
-     * AlarmScheduler для детерминированного поиска следующего дня с нужным
-     * типом смены: полный проход по циклу гарантированно находит её.
-     */
+    /** Общедоступная длина цикла Графика №1 (дней). */
     const val SHIFT_CYCLE_SIZE: Int = 10
 
-    /** Диапазон допустимых номеров бригад (1..5). */
-    const val MIN_BRIGADE = 1
-    const val MAX_BRIGADE = 5
+    /** Длина цикла для указанного типа графика (для детерминированного поиска дней). */
+    fun cycleSizeFor(scheduleType: ScheduleType = currentScheduleType): Int =
+        when (scheduleType) {
+            ScheduleType.GRAPH_1 -> CYCLE_SIZE.toInt()
+            ScheduleType.GRAPH_2 -> CYCLE2_SIZE.toInt()
+        }
 
-    // Смещения бригад фиксированы бизнес-правилом графика (см. getOffsetForBrigade).
     private fun getOffsetForBrigade(brigade: Int): Int {
         return when (brigade) {
             1 -> 0
@@ -59,30 +64,110 @@ object ShiftSchedule {
         }
     }
 
+    // ===== График №2: 4 бригады, 12 ч (цикл 8 дней) =====
+    // Мастер-цикл (бригада 4): У У В В Н Н В В (от сегодня 08.08).
+    // Смещения смен для остальных бригад — циклический сдвиг того же цикла:
+    //   Б1: В В Н Н В В У У  (сдвиг 2)
+    //   Б2: Н Н В В У У В В  (сдвиг 4)
+    //   Б3: В В У У В В Н Н  (сдвиг 6)
+    //   Б4: У У В В Н Н В В  (сдвиг 0)
+    private val CYCLE2 = listOf(
+        ShiftType.MORNING, // У
+        ShiftType.MORNING, // У
+        ShiftType.OFF,     // В
+        ShiftType.OFF,     // В
+        ShiftType.NIGHT,   // Н
+        ShiftType.NIGHT,   // Н
+        ShiftType.OFF,     // В
+        ShiftType.OFF      // В
+    )
 
+    val CYCLE2_SIZE: Long = CYCLE2.size.toLong()
+
+    private fun getOffsetForBrigadeGraph2(brigade: Int): Int {
+        return when (brigade) {
+            1 -> 2
+            2 -> 4
+            3 -> 6
+            4 -> 0
+            else -> 0
+        }
+    }
+
+    // ===== Общая логика =====
+
+    /**
+     * Смена для указанной даты и бригады активного графика.
+     * [scheduleType] — тип графика; по умолчанию активный (`currentScheduleType`).
+     */
     fun shiftFor(
         date: LocalDate,
-        brigade: Int = 1
-    ): ShiftType {
-        // Валидация номера бригады (№5): некорректный номер молча давал бы
-        // график 1-й бригады (её смещение 0). Падаем явно, чтобы ошибка
-        // конфигурации всплыла сразу, а не дала «тихий» неверный график.
-        require(brigade in MIN_BRIGADE..MAX_BRIGADE) {
-            "Некорректный номер бригады: $brigade (допустимо $MIN_BRIGADE..$MAX_BRIGADE)"
+        brigade: Int = 1,
+        scheduleType: ScheduleType = currentScheduleType
+    ): ShiftType = when (scheduleType) {
+        ScheduleType.GRAPH_1 -> shiftForGraph1(date, brigade)
+        ScheduleType.GRAPH_2 -> shiftForGraph2(date, brigade)
+    }
+
+    private fun shiftForGraph1(date: LocalDate, brigade: Int): ShiftType {
+        require(brigade in 1..ScheduleType.GRAPH_1.brigadeCount) {
+            "Некорректный номер бригады Графика №1: $brigade"
+        }
+        val diff = ChronoUnit.DAYS.between(anchorDate, date)
+        val offset = getOffsetForBrigade(brigade)
+        val idx = (((diff + offset) % CYCLE_SIZE) + CYCLE_SIZE) % CYCLE_SIZE
+        return CYCLE[idx.toInt()]
+    }
+
+    private fun shiftForGraph2(date: LocalDate, brigade: Int): ShiftType {
+        require(brigade in 1..ScheduleType.GRAPH_2.brigadeCount) {
+            "Некорректный номер бригады Графика №2: $brigade"
+        }
+        val diff = ChronoUnit.DAYS.between(anchorDateGraph2, date)
+        val offset = getOffsetForBrigadeGraph2(brigade)
+        val idx = (((diff + offset) % CYCLE2_SIZE) + CYCLE2_SIZE) % CYCLE2_SIZE
+        return CYCLE2[idx.toInt()]
+    }
+
+    // ===== Времена смен по графику =====
+
+    /**
+     * Время начала смены для активного графика. В Графике №2 смены 12-часовые:
+     * Утро 08:00–20:00, Ночь 20:00–08:00 (в отличие от 8-часовых в Графике №1).
+     */
+    fun shiftStartTime(shift: ShiftType, scheduleType: ScheduleType = currentScheduleType): LocalTime? =
+        when (scheduleType) {
+            ScheduleType.GRAPH_1 -> shift.startTime
+            ScheduleType.GRAPH_2 -> when (shift) {
+                ShiftType.MORNING -> LocalTime.of(8, 0)
+                ShiftType.NIGHT -> LocalTime.of(20, 0)
+                else -> null
+            }
         }
 
-        val diff = ChronoUnit.DAYS.between(
-            anchorDate,
-            date
-        )
+    /** Время конца смены для активного графика. */
+    fun shiftEndTime(shift: ShiftType, scheduleType: ScheduleType = currentScheduleType): LocalTime? =
+        when (scheduleType) {
+            ScheduleType.GRAPH_1 -> shift.endTime
+            ScheduleType.GRAPH_2 -> when (shift) {
+                ShiftType.MORNING -> LocalTime.of(20, 0)
+                ShiftType.NIGHT -> LocalTime.of(8, 0)
+                else -> null
+            }
+        }
 
-        val offset = getOffsetForBrigade(brigade)
-
-        // Единая формула: корректно обрабатывает и отрицательные разности
-        // (даты раньше anchorDate), и любую длину цикла.
-        val size = CYCLE_SIZE
-        val idx = (((diff + offset) % size) + size) % size
-
-        return CYCLE[idx.toInt()]
+    /**
+     * Момент окончания смены, назначенной на [date]. Ночь (20:00–08:00) в Графике №2
+     * пересекает полночь и заканчивается на следующий день в 08:00.
+     */
+    fun shiftEndDateTime(
+        date: LocalDate,
+        shift: ShiftType,
+        scheduleType: ScheduleType = currentScheduleType
+    ): LocalDateTime? {
+        val s = shiftStartTime(shift, scheduleType) ?: return null
+        val e = shiftEndTime(shift, scheduleType) ?: return null
+        val crossesMidnight = e.isBefore(s) || e == s
+        return LocalDateTime.of(if (crossesMidnight) date.plusDays(1) else date, e)
     }
 }

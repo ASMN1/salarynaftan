@@ -38,6 +38,7 @@ class App : Application() {
             try {
                 syncBrigadeForWidget()
                 syncShiftScheduleAnchor()
+                syncScheduleType()
             } catch (_: Exception) {
                 // Невалидные настройки не должны ронять приложение.
             }
@@ -86,6 +87,17 @@ class App : Application() {
         val dataStoreBrigade = SettingsManager(this).getBrigade()
         getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
             .edit().putInt(PreferenceKeys.BRIGADE_KEY, dataStoreBrigade).apply()
+    }
+
+    // Подхватываем выбранный тип графика (№1/№2) в доменный объект ShiftSchedule,
+    // чтобы все вызовы расписания использовали активный график с первого запуска.
+    private fun syncScheduleType() {
+        try {
+            ShiftSchedule.currentScheduleType = SettingsManager(this).getScheduleType()
+            ShiftSchedule.anchorDateGraph2 = java.time.LocalDate.of(2026, 8, 8)
+        } catch (_: Exception) {
+            // невалидные настройки — оставляем дефолт
+        }
     }
 
     private fun createAlarmNotificationChannel() {

@@ -85,6 +85,28 @@ class SettingsManager(context: Context) {
     // ----- БРИГАДА -----
     fun getBrigade(): Int = dataStore.getBrigade()
 
+    /** Текущий тип графика (График №1 / График №2). */
+    fun getScheduleType(): ScheduleType = dataStore.getScheduleType()
+
+    fun setScheduleType(type: ScheduleType) {
+        val old = dataStore.getScheduleType()
+        if (old == type) return
+        dataStore.saveScheduleType(type)
+        ShiftSchedule.currentScheduleType = type
+        // При переключении графика активная бригада может выйти за новый диапазон
+        // (например, бригада 5 при переходе на 4-бригадный График №2) — приводим
+        // её к валидному номеру, чтобы графики/будильники/ЗП считались корректно.
+        val current = dataStore.getBrigade()
+        if (!type.isValidBrigade(current)) {
+            setBrigade(1)
+        } else {
+            // Иначе просто перерисовываем виджет и пересчитываем будильники.
+            appContext.getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, android.content.Context.MODE_PRIVATE)
+                .edit().putInt(PreferenceKeys.BRIGADE_KEY, current).apply()
+            ShiftWidgetProvider.triggerUpdate(appContext)
+        }
+    }
+
     fun setBrigade(brigade: Int) {
         dataStore.setBrigade(brigade)
         // Виджет читает бригаду из SharedPreferences, а не из DataStore —

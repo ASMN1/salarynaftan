@@ -346,6 +346,43 @@ fun SettingsScreen(
             }
         }
 
+        // ---- 5. ГРАФИК СМЕН ----
+        PremiumSettingCard(
+            icon = "🗓️",
+            title = "График смен",
+            description = viewState.scheduleType.displayName
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 18.dp)
+            ) {
+                ScheduleType.entries.forEach { type ->
+                    val selected = viewState.scheduleType == type
+                    Surface(
+                        onClick = { viewModel.setScheduleType(type, scheduler) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+                        contentColor = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            "График №${type.ordinal + 1}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "${viewState.scheduleType.brigadeCount} бригад · смены по ${viewState.scheduleType.shiftHours.toInt()} ч",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(start = 18.dp, top = 6.dp)
+            )
+        }
+
         // ---- 5. БРИГАДА ----
         PremiumSettingCard(
             icon = "👥",
@@ -356,7 +393,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(horizontal = 18.dp)
             ) {
-                (1..5).forEach { num ->
+                viewState.scheduleType.brigadeRange().forEach { num ->
                     val selected = viewState.brigade == num
                     Surface(
                         onClick = { viewModel.setBrigade(num, scheduler) },

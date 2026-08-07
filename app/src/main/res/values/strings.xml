@@ -28,6 +28,7 @@
     <string name="salary_err_stazh_range">Коэф. стажа — от 0 до 200%%</string>
     <string name="salary_err_pps_range">ППС — от 0 до 100%%</string>
     <string name="salary_section_work_time">Рабочее время</string>
+    <string name="salary_field_norm_manual">Норма часов (вручную)</string>
     <string name="salary_field_prazdn_auto">Праздн. (авто)</string>
     <string name="salary_field_children">Детей</string>
     <string name="salary_section_premiums">Премии и доп. выплаты</string>

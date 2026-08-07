@@ -40,6 +40,9 @@ class WidgetConfigureActivity : Activity() {
         val prefs = getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
         val currentBrigade = prefs.getInt(PreferenceKeys.BRIGADE_KEY, 1)
 
+        // Диапазон бригад зависит от активного графика (№1 — 5 бригад, №2 — 4).
+        val scheduleType = SettingsManager(this).getScheduleType()
+
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
@@ -52,15 +55,9 @@ class WidgetConfigureActivity : Activity() {
         }
         rootLayout.addView(titleView)
 
-        val brigadeLabels = listOf(
-            "Бригада 1",
-            "Бригада 2",
-            "Бригада 3",
-            "Бригада 4",
-            "Бригада 5"
-        )
+        val brigadeLabels = (1..scheduleType.brigadeCount).map { "Бригада $it" }
 
-        for (i in 1..5) {
+        for (i in 1..scheduleType.brigadeCount) {
             val button = Button(this).apply {
                 text = brigadeLabels[i - 1]
                 textSize = 16f

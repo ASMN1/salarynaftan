@@ -119,6 +119,9 @@ object SchedulePdfExporter {
         val rows = row + 1
         val gridBottom = gridStartY + rows * cellH
 
+        // Длительность смены зависит от активного графика (8ч у №1, 12ч у №2).
+        val shiftHours = ShiftSchedule.currentScheduleType.shiftHours
+
         // --- Легенда ---
         paint.typeface = regular
         paint.textAlign = Paint.Align.LEFT
@@ -150,7 +153,7 @@ object SchedulePdfExporter {
         paint.typeface = bold
         paint.textSize = 18f
         canvas.drawText(workDays.toString(), MARGIN + 14f, summaryY + 33f, paint)
-        canvas.drawText((workDays * 8).toString(), MARGIN + contentW / 2f + 14f, summaryY + 33f, paint)
+        canvas.drawText((workDays * shiftHours).toString(), MARGIN + contentW / 2f + 14f, summaryY + 33f, paint)
 
         // --- Подвал ---
         paint.color = ExportStyle.MUTED

@@ -25,7 +25,8 @@ import androidx.compose.ui.unit.sp
 fun BrigadeSelector(
     selectedBrigade: Int,
     onBrigadeSelected: (Int) -> Unit,
-    primaryColor: Color
+    primaryColor: Color,
+    brigadeCount: Int = 5
 ) {
     PremiumSectionCard {
         Column {
@@ -37,7 +38,7 @@ fun BrigadeSelector(
                     .padding(horizontal = 18.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                (1..5).forEach { num ->
+                (1..brigadeCount).forEach { num ->
                     val selected = selectedBrigade == num
                     Surface(
                         onClick = { onBrigadeSelected(num) },

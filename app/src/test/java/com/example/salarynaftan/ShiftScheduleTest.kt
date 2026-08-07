@@ -154,4 +154,100 @@ class ShiftScheduleTest {
     fun `OFF shift has no end time`() {
         assertEquals(null, ShiftType.OFF.endDateTime(java.time.LocalDate.of(2026, 1, 1)))
     }
+
+    // ===== График №2 (4 бригады, 12 ч, цикл 8 дней, якорь 2026-08-08) =====
+
+    private fun g2(date: java.time.LocalDate, brigade: Int) =
+        ShiftSchedule.shiftFor(date, brigade, ScheduleType.GRAPH_2)
+
+    @Test
+    fun `graph2 master cycle for brigade 4`() {
+        // Б4 = У У В В Н Н В В (с 08.08.2026)
+        val anchor = java.time.LocalDate.of(2026, 8, 8)
+        val expected = listOf(
+            ShiftType.MORNING, ShiftType.MORNING, ShiftType.OFF, ShiftType.OFF,
+            ShiftType.NIGHT, ShiftType.NIGHT, ShiftType.OFF, ShiftType.OFF
+        )
+        expected.forEachIndexed { i, shift ->
+            assertEquals(shift, g2(anchor.plusDays(i.toLong()), 4))
+        }
+    }
+
+    @Test
+    fun `graph2 brigade 1 is rotated by 2`() {
+        // Б1 = В В Н Н В В У У (сдвиг 2)
+        val anchor = java.time.LocalDate.of(2026, 8, 8)
+        assertEquals(ShiftType.OFF, g2(anchor, 1))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(1), 1))
+        assertEquals(ShiftType.NIGHT, g2(anchor.plusDays(2), 1))
+        assertEquals(ShiftType.NIGHT, g2(anchor.plusDays(3), 1))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(4), 1))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(5), 1))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(6), 1))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(7), 1))
+    }
+
+    @Test
+    fun `graph2 brigade 2 is rotated by 4`() {
+        // Б2 = Н Н В В У У В В (сдвиг 4)
+        val anchor = java.time.LocalDate.of(2026, 8, 8)
+        assertEquals(ShiftType.NIGHT, g2(anchor, 2))
+        assertEquals(ShiftType.NIGHT, g2(anchor.plusDays(1), 2))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(2), 2))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(3), 2))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(4), 2))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(5), 2))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(6), 2))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(7), 2))
+    }
+
+    @Test
+    fun `graph2 brigade 3 is rotated by 6`() {
+        // Б3 = В В У У В В Н Н (сдвиг 6)
+        val anchor = java.time.LocalDate.of(2026, 8, 8)
+        assertEquals(ShiftType.OFF, g2(anchor, 3))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(1), 3))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(2), 3))
+        assertEquals(ShiftType.MORNING, g2(anchor.plusDays(3), 3))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(4), 3))
+        assertEquals(ShiftType.OFF, g2(anchor.plusDays(5), 3))
+        assertEquals(ShiftType.NIGHT, g2(anchor.plusDays(6), 3))
+        assertEquals(ShiftType.NIGHT, g2(anchor.plusDays(7), 3))
+    }
+
+    @Test
+    fun `graph2 cycle repeats after 8 days`() {
+        val anchor = java.time.LocalDate.of(2026, 8, 8)
+        assertEquals(g2(anchor, 1), g2(anchor.plusDays(8), 1))
+        assertEquals(g2(anchor, 2), g2(anchor.plusDays(8), 2))
+        assertEquals(g2(anchor, 3), g2(anchor.plusDays(8), 3))
+        assertEquals(g2(anchor, 4), g2(anchor.plusDays(8), 4))
+    }
+
+    @Test
+    fun `graph2 shift times are 12 hours`() {
+        val date = java.time.LocalDate.of(2026, 8, 8)
+        // Утро 08:00–20:00
+        assertEquals(java.time.LocalTime.of(8, 0), ShiftSchedule.shiftStartTime(ShiftType.MORNING, ScheduleType.GRAPH_2))
+        assertEquals(java.time.LocalTime.of(20, 0), ShiftSchedule.shiftEndTime(ShiftType.MORNING, ScheduleType.GRAPH_2))
+        assertEquals(java.time.LocalDateTime.of(2026, 8, 8, 20, 0), ShiftSchedule.shiftEndDateTime(date, ShiftType.MORNING, ScheduleType.GRAPH_2))
+        // Ночь 20:00–08:00 (пересекает полночь → заканчивается на следующий день)
+        assertEquals(java.time.LocalTime.of(20, 0), ShiftSchedule.shiftStartTime(ShiftType.NIGHT, ScheduleType.GRAPH_2))
+        assertEquals(java.time.LocalTime.of(8, 0), ShiftSchedule.shiftEndTime(ShiftType.NIGHT, ScheduleType.GRAPH_2))
+        assertEquals(java.time.LocalDateTime.of(2026, 8, 9, 8, 0), ShiftSchedule.shiftEndDateTime(date, ShiftType.NIGHT, ScheduleType.GRAPH_2))
+        // OFF не имеет времени
+        assertEquals(null, ShiftSchedule.shiftStartTime(ShiftType.OFF, ScheduleType.GRAPH_2))
+        assertEquals(null, ShiftSchedule.shiftEndTime(ShiftType.OFF, ScheduleType.GRAPH_2))
+    }
+
+    @Test
+    fun `graph2 invalid brigade throws`() {
+        val date = java.time.LocalDate.of(2026, 8, 8)
+        try {
+            ShiftSchedule.shiftFor(date, 5, ScheduleType.GRAPH_2)
+            throw AssertionError("ожидался IllegalArgumentException для бригады 5 в Графике №2")
+        } catch (_: IllegalArgumentException) {
+            // ожидаемо
+        }
+    }
 }

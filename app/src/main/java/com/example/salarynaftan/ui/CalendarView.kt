@@ -69,6 +69,7 @@ import java.util.Locale
 fun MonthCalendarPager(
     visibleMonth: YearMonth,
     selectedBrigade: Int,
+    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType,
     onMonthChange: (YearMonth) -> Unit,
     onGoToToday: () -> Unit,
     morningColor: Color,
@@ -293,6 +294,7 @@ fun MonthCalendarPager(
                 MonthGrid(
                     month = monthForPage,
                     brigade = selectedBrigade,
+                    scheduleType = scheduleType,
                     today = today,
                     morningColor = morningColor,
                     dayColor = dayColor,
@@ -313,6 +315,7 @@ fun MonthCalendarPager(
 fun MonthGrid(
     month: YearMonth,
     brigade: Int,
+    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType,
     today: LocalDate,
     morningColor: Color,
     dayColor: Color,
@@ -379,7 +382,7 @@ fun MonthGrid(
 
                     if (dayNumber in 1..daysInMonth) {
                         val date = month.atDay(dayNumber)
-                        val shift = ShiftSchedule.shiftFor(date, brigade)
+                        val shift = ShiftSchedule.shiftFor(date, brigade, scheduleType)
                         val isToday = date == today
                         val color = getColorForShift(shift)
                         val isSalary = date == salaryDate
@@ -533,7 +536,7 @@ fun MonthGrid(
 
     // Всплывающая подсказка (tooltip) с деталями дня при долгом нажатии
     tooltipDate?.let { d ->
-        val ttShift = ShiftSchedule.shiftFor(d, brigade)
+        val ttShift = ShiftSchedule.shiftFor(d, brigade, scheduleType)
         AlertDialog(
             onDismissRequest = { tooltipDate = null },
             title = {
@@ -549,10 +552,10 @@ fun MonthGrid(
                         Text("Смена:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
                         Text("${ttShift.displayName} (${ttShift.shortName})", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
-                    if (ttShift.startTime != null && ttShift.endTime != null) {
+                    if (ShiftSchedule.shiftStartTime(ttShift, scheduleType) != null && ShiftSchedule.shiftEndTime(ttShift, scheduleType) != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Время:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
-                            Text("${ttShift.startTime} – ${ttShift.endTime}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("${ShiftSchedule.shiftStartTime(ttShift, scheduleType)} – ${ShiftSchedule.shiftEndTime(ttShift, scheduleType)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     if (d == salaryDate) {

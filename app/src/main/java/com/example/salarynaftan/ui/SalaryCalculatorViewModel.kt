@@ -20,6 +20,7 @@ class SalaryCalculatorViewModel(
 ) : ViewModel() {
 
     enum class SalaryField {
+        NORM_HOURS,
         ZA_OTSUTSTVUUSHEGO,
         KVARTALKA,
         GAZETA,
@@ -103,13 +104,23 @@ class SalaryCalculatorViewModel(
                 // норма из справочника по году (MonthlyNorms), праздничные из
                 // календаря (Holidays). Ручной ввод этих полей убран — значения
                 // не меняются и всегда согласованы с графиком.
-                val norm = MonthlyNorms.norm(year, monthIndex).toString()
+                val scheduleType = settingsManager.getScheduleType()
+                // Для Графика №1 норма берётся из справочника (MonthlyNorms) и не
+                // редактируется вручную. Для Графика №2 таблица норм ещё не пришла,
+                // поэтому норма — поле ручного ввода: берём сохранённое значение
+                // (или пустое поле для ввода при первом открытии).
+                val norm = if (scheduleType == ScheduleType.GRAPH_2) {
+                    saved?.normHours ?: ""
+                } else {
+                    MonthlyNorms.norm(year, monthIndex).toString()
+                }
                 val holidayHours = SalaryCalculator.monthStats(
                     year = year,
                     monthIndex = monthIndex,
                     brigade = settingsManager.getBrigade(),
                     missedDays = emptySet(),
-                    vacationDays = emptySet()
+                    vacationDays = emptySet(),
+                    scheduleType = scheduleType
                 ).holidayHours
                 val prazdn = if (holidayHours > 0) holidayHours.toString() else "0"
                 val otsut = saved?.zaOtsutstvuushego ?: ""
@@ -152,6 +163,7 @@ class SalaryCalculatorViewModel(
         val digitsOnly = value.filter { it.isDigit() }
         _uiState.update { current ->
             when (field) {
+                SalaryField.NORM_HOURS -> current.copy(normHours = value)
                 SalaryField.ZA_OTSUTSTVUUSHEGO -> current.copy(zaOtsutstvuushego = value)
                 SalaryField.KVARTALKA -> current.copy(kvartalka = value)
                 SalaryField.GAZETA -> current.copy(gazetaInput = value)
@@ -234,7 +246,8 @@ class SalaryCalculatorViewModel(
             prevVacation = salaryRepository.getVacationDays(
                 if (monthIndex == 0) year - 1 else year,
                 (monthIndex - 1 + 12) % 12
-            )
+            ),
+            scheduleType = settingsManager.getScheduleType()
         )
 
         return SalaryCalculator.calculate(

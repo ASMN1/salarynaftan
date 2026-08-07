@@ -23,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,8 +73,30 @@ fun ScheduleScreen(
     // Активная бригада из настроек
     val activeBrigade = settingsManager.getBrigade()
 
+    // Активный тип графика (№1/№2)
+    val activeScheduleType = settingsManager.getScheduleType()
+
     // Бригада для просмотра (локальная)
     var viewingBrigade by remember { mutableStateOf(activeBrigade) }
+
+    // Тип графика для просмотра (локальный)
+    var viewingScheduleType by remember { mutableStateOf(activeScheduleType) }
+
+    // Смена графика: переключаем доменный активный график, чтобы весь экран
+    // (календарь, бригады, сегодня, итоги, экспорт) считал расписание заново.
+    fun switchScheduleType(type: ScheduleType) {
+        if (viewingScheduleType == type) return
+        settingsManager.setScheduleType(type)
+        viewingScheduleType = type
+        // Бригада могла быть скорректирована под новый график (например, 5→1).
+        viewingBrigade = settingsManager.getBrigade()
+        // Пересчитываем сменные будильники под новый график (другие бригады, цикл).
+        try {
+            scheduler.rescheduleAllAlarmsForBrigade(viewingBrigade)
+        } catch (_: Exception) {
+            // Невалидные настройки будильников не должны ронять экран графика.
+        }
+    }
 
     // Пропущенные дни по месяцам: ключ = "год-месяц", значение = Set<Int>
     var missedDaysMap by remember { mutableStateOf<Map<String, Set<Int>>>(emptyMap()) }
@@ -208,22 +231,58 @@ fun ScheduleScreen(
         }
 
         // Блок текущей смены «Сегодня» с обратным отсчётом (№9 из UI/UX)
+        // Переключатель графика (№1/№2) — прямо над блоком «Сегодня».
+        PremiumSectionCard {
+            Column {
+                PremiumSectionTitle(icon = "🗓️", title = "График смен", subtitle = viewingScheduleType.displayName)
+                PremiumDivider()
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                ) {
+                    ScheduleType.entries.forEach { type ->
+                        val selected = viewingScheduleType == type
+                        Surface(
+                            onClick = { switchScheduleType(type) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) primaryColor else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+                            contentColor = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "График №${type.ordinal + 1}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
         TodayShiftCard(
             brigade = viewingBrigade,
-            primaryColor = primaryColor
+            primaryColor = primaryColor,
+            scheduleType = viewingScheduleType
         )
 
         // Выбор бригады для просмотра
         BrigadeSelector(
             selectedBrigade = viewingBrigade,
             onBrigadeSelected = { viewingBrigade = it },
-            primaryColor = primaryColor
+            primaryColor = primaryColor,
+            brigadeCount = viewingScheduleType.brigadeCount
         )
 
         // Календарь
         MonthCalendarPager(
             visibleMonth = visibleMonth,
             selectedBrigade = viewingBrigade,
+            scheduleType = viewingScheduleType,
             onMonthChange = { visibleMonth = it },
             onGoToToday = { visibleMonth = YearMonth.from(today) },
             morningColor = morningColor,
