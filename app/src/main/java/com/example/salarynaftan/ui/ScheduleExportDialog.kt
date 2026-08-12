@@ -25,6 +25,7 @@ import java.time.YearMonth
 fun ScheduleExportDialog(
     month: YearMonth,
     brigade: Int,
+    scheduleType: ScheduleType,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -104,7 +105,9 @@ fun ScheduleExportDialog(
                         onClick = {
                             scope.launch(Dispatchers.IO) {
                                 try {
-                                    val icsFile = ScheduleIcsExporter.createIcsFile(context, month, brigade)
+                                    val icsFile = ScheduleIcsExporter.createIcsFile(
+                                        context, month, brigade, scheduleType
+                                    )
                                     withContext(Dispatchers.Main) {
                                         if (icsFile != null) {
                                             shareFile(context, icsFile)
@@ -159,13 +162,15 @@ fun ScheduleExportDialog(
                                     SchedulePdfExporter.createYearPdf(
                                         context = context,
                                         brigade = brigade,
-                                        year = month.year
+                                        year = month.year,
+                                        scheduleType = scheduleType
                                     )
                                 } else {
                                     SchedulePdfExporter.createMonthPdf(
                                         context = context,
                                         brigade = brigade,
-                                        month = month
+                                        month = month,
+                                        scheduleType = scheduleType
                                     )
                                 }
                             } else {
@@ -173,13 +178,15 @@ fun ScheduleExportDialog(
                                     ScheduleImageExporter.createYearImage(
                                         context = context,
                                         brigade = brigade,
-                                        year = month.year
+                                        year = month.year,
+                                        scheduleType = scheduleType
                                     )
                                 } else {
                                     ScheduleImageExporter.createMonthImage(
                                         context = context,
                                         brigade = brigade,
-                                        month = month
+                                        month = month,
+                                        scheduleType = scheduleType
                                     )
                                 }
                             }

@@ -8,12 +8,6 @@ object PreferenceKeys {
 
     const val AUTO_SILENCE_PREFS = "auto_silence_prefs"
 
-    const val AUTO_SILENCE_ENABLED = "auto_silence_enabled"
-
-    const val AUTO_SILENCE_START = "auto_silence_start"
-
-    const val AUTO_SILENCE_END = "auto_silence_end"
-
     // Ниже — добавлено для единообразия с остальными файлами проекта
     // (раньше эти имена были "сырыми" строками в SettingsManager/MainActivity).
 

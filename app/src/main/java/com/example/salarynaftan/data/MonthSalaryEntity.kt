@@ -11,7 +11,6 @@ data class MonthSalaryEntity(
     val year: Int, // + например 2027
     val monthIndex: Int, // 0-11
     override val normHours: String = "",
-    val prazdnHours: String = "0",
     val zaOtsutstvuushego: String = "",
     val kvartalka: String = "",
     val gazetaInput: String = "0",

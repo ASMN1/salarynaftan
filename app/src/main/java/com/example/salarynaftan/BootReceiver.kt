@@ -4,11 +4,12 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
+import com.example.salarynaftan.di.AppDependencies
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -20,10 +21,11 @@ class BootReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             val appContext = context.applicationContext
 
-            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
 
                 try {
-                    val scheduler = AlarmScheduler(appContext)
+                    withTimeout(30_000L) {
+                    val scheduler = AppDependencies.alarmScheduler
                     // rescheduleAllAfterBoot сам отменяет существующие будильники
                     // (чтобы избежать дублирования) и перепланирует по настройкам —
                     // отдельные cancel-вызовы здесь избыточны и убраны.
@@ -46,6 +48,7 @@ class BootReceiver : BroadcastReceiver() {
                         val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         nm.notify(notifyId, builder.build())
                         Timber.i("Точные будильники запрещены — показано напоминание пользователю")
+                    }
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Ошибка перепланирования будильников после загрузки")

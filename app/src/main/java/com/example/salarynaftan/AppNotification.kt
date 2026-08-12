@@ -9,7 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
  * Сообщение внутри приложения (красивое in-app уведомление через Snackbar).
@@ -27,17 +28,17 @@ data class AppToast(
  * показываемый в корневом Scaffold приложения (поверх любой вкладки).
  */
 object AppNotifier {
-    private val _toasts = MutableSharedFlow<AppToast>(extraBufferCapacity = 16)
-    val toasts = _toasts
+    private val _toasts = Channel<AppToast>(capacity = Channel.BUFFERED)
+    val toasts = _toasts.receiveAsFlow()
 
     /** Показать обычное уведомление. */
     fun show(message: String) {
-        _toasts.tryEmit(AppToast(message, isError = false))
+        _toasts.trySend(AppToast(message, isError = false))
     }
 
     /** Показать уведомление об ошибке (красная подсветка). */
     fun showError(message: String) {
-        _toasts.tryEmit(AppToast(message, isError = true))
+        _toasts.trySend(AppToast(message, isError = true))
     }
 }
 

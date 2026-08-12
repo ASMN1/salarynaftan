@@ -6,7 +6,9 @@ import com.example.salarynaftan.data.DataStoreManager
 import com.example.salarynaftan.util.colorToArgb
 
 class ColorSettingsManager(context: Context) {
-    private val dataStore = DataStoreManager(context)
+    // Общий инстанс на Context: SettingsManager и ColorSettingsManager должны
+    // разделять ОДИН кэш и writeScope, иначе гонка данных между кэшами (п.3.4).
+    private val dataStore = DataStoreManager.getInstance(context)
 
     fun getMorningColor(): Color = Color(dataStore.getMorningColor())
     fun getDayColor(): Color = Color(dataStore.getDayColor())

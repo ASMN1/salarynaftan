@@ -5,9 +5,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import java.time.ZoneId
+import timber.log.Timber
 
 /**
  * Авто-тишина: установка/снятие точных будильников включения и выключения
@@ -28,14 +31,12 @@ class AutoSilenceScheduler(private val context: Context) {
 
         if (isEnabled) {
             val now = LocalDateTime.now()
-            val hOn = startTime.substringBefore(":").toIntOrNull() ?: 8
-            val mOn = startTime.substringAfter(":").toIntOrNull() ?: 0
-            var startLdt = now.withHour(hOn).withMinute(mOn).withSecond(0)
+            val on = parseTime(startTime, LocalTime.of(8, 0))
+            var startLdt = now.with(on).withSecond(0).withNano(0)
             if (startLdt.isBefore(now)) startLdt = startLdt.plusDays(1)
 
-            val hOff = endTime.substringBefore(":").toIntOrNull() ?: 16
-            val mOff = endTime.substringAfter(":").toIntOrNull() ?: 0
-            var endLdt = now.withHour(hOff).withMinute(mOff).withSecond(0)
+            val off = parseTime(endTime, LocalTime.of(16, 0))
+            var endLdt = now.with(off).withSecond(0).withNano(0)
             if (endLdt.isBefore(now)) endLdt = endLdt.plusDays(1)
             // Если время окончания раньше или равно началу (например, тишина 23:00–07:00),
             // сдвигаем окончание на ещё один день, иначе OFF сработает раньше ON.
@@ -56,8 +57,14 @@ class AutoSilenceScheduler(private val context: Context) {
                     )
                 }
             } catch (e: Exception) {
-                Log.e("AutoSilenceScheduler", "Ошибка установки авто-тишины", e)
+                // Timber вместо Log: в релизе логи пишутся в файл (п.6.4),
+                // единообразно с остальными receiver'ами.
+                Timber.e(e, "Ошибка установки авто-тишины")
             }
         }
     }
+
+    private fun parseTime(value: String, fallback: LocalTime): LocalTime =
+        try { LocalTime.parse(value.trim(), DateTimeFormatter.ofPattern("HH:mm")) }
+        catch (_: DateTimeParseException) { fallback }
 }

@@ -5,7 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
+import timber.log.Timber
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -18,6 +18,13 @@ class RegularAlarmScheduler(private val context: Context) {
     private val prefs = context.getSharedPreferences(PreferenceKeys.ALARM_PREFS, Context.MODE_PRIVATE)
 
     companion object {
+        // Диапазон requestCode обычных будильников изолирован от сменных
+        // (brigade*1000 + type*100 + index, максимум ~500 000) и тестового
+        // (100 000–199 000), чтобы PendingIntent с одинаковым кодом не
+        // «съедал» чужой будильник (п.2.1). Смещение 1_000_000 гарантирует
+        // отсутствие пересечения диапазонов.
+        private const val REQUEST_CODE_BASE = 1_000_000
+        private const val REQUEST_CODE_RANGE = 900_000
         // Label сериализуется через Base64: разделители | и ; внутри текста
         // иначе ломают парсинг списка будильников (split происходил до
         // раскодирования, поэтому простое экранирование не спасало).
@@ -73,6 +80,13 @@ class RegularAlarmScheduler(private val context: Context) {
         val hour = parts.getOrNull(0)?.toIntOrNull() ?: 7
         val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
 
+        // Валидация диапазона: withHour(25)/withMinute(99) бросит
+        // DateTimeException и уронит планировщик (п.6.2).
+        if (hour !in 0..23 || minute !in 0..59) {
+            Timber.w("Некорректное время будильника: ${alarm.time} — пропускаем")
+            return
+        }
+
         val now = LocalDateTime.now()
         var targetTime = now.withHour(hour).withMinute(minute).withSecond(0)
         if (targetTime.isBefore(now)) {
@@ -84,7 +98,9 @@ class RegularAlarmScheduler(private val context: Context) {
             putExtra("alarm_title", alarm.label)
         }
 
-        val requestCode = (alarm.id % Int.MAX_VALUE).toInt()
+        // requestCode в изолированном диапазоне (п.2.1): не пересекается
+        // со сменными/тестовыми будильниками.
+        val requestCode = requestCodeFor(alarm.id)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
@@ -110,14 +126,17 @@ class RegularAlarmScheduler(private val context: Context) {
                 )
 
                 alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            } else {
+                Timber.w("Обычный будильник не запланирован (нет разрешения exact alarm)")
             }
         } catch (e: Exception) {
-            Log.e("RegularAlarmScheduler", "Ошибка установки обычного будильника", e)
+            Timber.e(e, "Ошибка установки обычного будильника")
         }
     }
 
     fun cancelSingleRegularAlarm(alarmId: Long) {
-        val requestCode = (alarmId % Int.MAX_VALUE).toInt()
+        // Тот же изолированный диапазон, что и при установке (п.2.1).
+        val requestCode = requestCodeFor(alarmId)
         val intent = Intent(context, AlarmReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -126,5 +145,25 @@ class RegularAlarmScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
+    }
+
+    /** Stable, collision-resistant mapping for persisted IDs; unlike modulo it
+     * does not make IDs separated by 900000 share a PendingIntent. */
+    @Synchronized
+    private fun requestCodeFor(id: Long): Int {
+        val key = "regular_alarm_request_code_$id"
+        prefs.getInt(key, Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }?.let { return it }
+        var value = id xor (id ushr 32)
+        value = value * -7046029254386353131L
+        var code = REQUEST_CODE_BASE + Math.floorMod((value xor (value ushr 32)).toInt(), REQUEST_CODE_RANGE)
+        val occupied = prefs.all.entries
+            .filter { it.key.startsWith("regular_alarm_request_code_") }
+            .mapNotNull { it.value as? Int }
+            .toSet()
+        while (code in occupied) {
+            code = REQUEST_CODE_BASE + Math.floorMod(code - REQUEST_CODE_BASE + 1, REQUEST_CODE_RANGE)
+        }
+        prefs.edit().putInt(key, code).apply()
+        return code
     }
 }

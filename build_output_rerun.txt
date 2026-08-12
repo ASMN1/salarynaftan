@@ -1,0 +1,74 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateDebugResValues
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:writeDebugAppMetadata
+> Task :app:desugarDebugFileDependencies
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResources
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:javaPreCompileDebug
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugShaders
+> Task :app:mergeDebugJniLibFolders
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:validateSigningDebug
+> Task :app:checkDebugDuplicateClasses
+> Task :app:mapDebugSourceSetPaths
+> Task :app:checkDebugAarMetadata
+> Task :app:mergeLibDexDebug
+> Task :app:mergeDebugAssets
+> Task :app:compressDebugAssets
+> Task :app:mergeDebugNativeLibs
+> Task :app:packageDebugResources
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so.
+
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeDebugResources
+
+> Task :app:processDebugResources
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+
+> Task :app:packageDebugUnitTestForUnitTest
+> Task :app:generateDebugUnitTestConfig
+> Task :app:mergeExtDexDebug
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+> Task :app:processDebugJavaRes
+> Task :app:mergeDebugJavaResource
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:kspDebugUnitTestKotlin
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:assembleDebug
+> Task :app:createDebugApkListingFileRedirect
+
+> Task :app:compileDebugUnitTestKotlin
+w: file:///C:/Users/manch/AndroidStudioProjects/salarynaftan/app/src/test/java/com/example/salarynaftan/ShiftScheduleTest.kt:135:33 'fun endDateTime(date: LocalDate): LocalDateTime?' is deprecated. Use ShiftSchedule.shiftEndDateTime() for schedule-aware calculation.
+w: file:///C:/Users/manch/AndroidStudioProjects/salarynaftan/app/src/test/java/com/example/salarynaftan/ShiftScheduleTest.kt:142:37 'fun endDateTime(date: LocalDate): LocalDateTime?' is deprecated. Use ShiftSchedule.shiftEndDateTime() for schedule-aware calculation.
+w: file:///C:/Users/manch/AndroidStudioProjects/salarynaftan/app/src/test/java/com/example/salarynaftan/ShiftScheduleTest.kt:149:35 'fun endDateTime(date: LocalDate): LocalDateTime?' is deprecated. Use ShiftSchedule.shiftEndDateTime() for schedule-aware calculation.
+w: file:///C:/Users/manch/AndroidStudioProjects/salarynaftan/app/src/test/java/com/example/salarynaftan/ShiftScheduleTest.kt:155:42 'fun endDateTime(date: LocalDate): LocalDateTime?' is deprecated. Use ShiftSchedule.shiftEndDateTime() for schedule-aware calculation.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 41s
+47 actionable tasks: 47 executed
+Configuration cache entry reused.

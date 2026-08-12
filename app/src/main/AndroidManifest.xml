@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Синхронизация графика смен с Google Calendar (п.3.1) -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Разрешения для фонового сервиса звука будильника (Android 14+/targetSdk 35) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -122,6 +125,16 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.example.salarynaftan.ACTION_SHIFT_REMINDER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Пересчёт авто-тишины при смене часового пояса (п.4.2) -->
+        <receiver
+            android:name=".TimezoneChangeReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

@@ -10,6 +10,10 @@ import kotlin.math.max
  */
 object SalaryCalculator {
 
+    // Коэффициент «вредности» за час работы (п.3.4): доплата за вредные условия
+    // труда начисляется как VREDNOST_KOEF × фактически отработанные часы.
+    // Значение 0.423125 — тарифная ставка за вредность (руб/час) из исходной
+    // формулы завода; вынесено в константу, чтобы не было магического числа.
     const val VREDNOST_KOEF = 0.423125
     const val KOEF_NOCH = 0.4
     const val VYCHET_NA_ODNOGO_REBENKA = 63.0
@@ -33,7 +37,6 @@ object SalaryCalculator {
     /** Данные месяца, вводимые пользователем (числовые, без привязки к UI). */
     data class MonthInput(
         val normHours: Double,
-        val prazdnHours: Double,
         val zaOtsutstvuushego: Double,
         val kvartalka: Double,
         val gazetaInput: Double,
@@ -83,7 +86,7 @@ object SalaryCalculator {
         brigade: Int,
         missedDays: Set<Int>,
         vacationDays: Set<Int>,
-        scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
+        scheduleType: ScheduleType = ScheduleType.GRAPH_1
     ): MonthStats {
         val yearMonth = YearMonth.of(year, monthIndex + 1)
         val shiftHours = scheduleType.shiftHours
@@ -135,7 +138,7 @@ object SalaryCalculator {
         brigade: Int,
         missed: Set<Int>,
         vacation: Set<Int>,
-        scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
+        scheduleType: ScheduleType
     ): Int {
         val yearMonth = YearMonth.of(year, monthIndex + 1)
         var count = 0
@@ -210,10 +213,11 @@ object SalaryCalculator {
         val prazdn = (inputs.okladBase / normVal) * prazdnVal
 
         // Норма прошлого месяца: сохранённая (ручная) ИЛИ из справочника по году
-        val defaultPrevNorm = MonthlyNorms.norm(prevYear, prevMonthIndex).toString()
+        // (с учётом типа графика: у Графика №2 нормы 12-часовых смен).
+        val defaultPrevNorm = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType).toString()
         val savedPrevNorm = inputs.prevMonthData?.normHours?.takeIf { it.isNotEmpty() } ?: defaultPrevNorm
         var prevNormVal = parseNonNegative(savedPrevNorm)
-        if (prevNormVal <= 0.0) prevNormVal = MonthlyNorms.norm(prevYear, prevMonthIndex)
+        if (prevNormVal <= 0.0) prevNormVal = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType)
 
         // Факт прошлого месяца: вычисляем реальные часы по графику (без невыходов)
         // вместо хардкода из MonthlyNorms.list — корректно для любого года.

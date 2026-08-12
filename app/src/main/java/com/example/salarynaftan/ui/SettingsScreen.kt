@@ -43,7 +43,9 @@ fun SettingsScreen(
     currentBackgroundColor: Color,
     currentSurfaceColor: Color,
     uiScale: Float,
-    onUiScaleChange: (Float) -> Unit
+    onUiScaleChange: (Float) -> Unit,
+    useOled: Boolean = false,
+    onOledChange: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val viewModel = koinViewModel<SettingsViewModel>()
@@ -91,422 +93,93 @@ fun SettingsScreen(
             subtitle = stringResource(R.string.settings_subtitle)
         )
 
+        LegacyYearRecoverySection(primary = primary)
+
         // ---- 1. ТЕМА ----
-        PremiumSettingCard(
-            icon = if (isDarkTheme) "🌙" else "☀️",
-            title = "Тёмная тема",
-            description = if (isDarkTheme) "Включена" else "Выключена"
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isDarkTheme) "Включена" else "Выключена",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                PremiumSwitch(
-                    checked = isDarkTheme,
-                    onCheckedChange = { viewModel.setTheme(it, onThemeChange) },
-                    trackColor = primary
-                )
-            }
-        }
+        ThemeSettingCard(
+            isDarkTheme = isDarkTheme,
+            onThemeChange = { viewModel.setTheme(it, onThemeChange) },
+            primary = primary
+        )
 
         // ---- 2. ВСЕ НАСТРОЙКИ ЦВЕТОВ ----
-        PremiumSettingCard(
-            icon = "🎨",
-            title = "Оформление",
-            description = "Цвета приложения"
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PremiumDivider()
-
-                PremiumColorRow(
-                    label = "Основной",
-                    color = currentPrimaryColor,
-                    onClick = { showPrimaryPicker = true }
-                )
-                PremiumColorRow(
-                    label = "Фон",
-                    color = currentBackgroundColor,
-                    onClick = { showBackgroundPicker = true }
-                )
-                PremiumColorRow(
-                    label = "Карточки",
-                    color = currentSurfaceColor,
-                    onClick = { showSurfacePicker = true }
-                )
-                PremiumDivider()
-                Text("Смены", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
-                listOf(
-                    "🌅 Утро" to viewState.morningColor to ShiftType.MORNING,
-                    "☀️ День" to viewState.dayColor to ShiftType.DAY,
-                    "🌙 Ночь" to viewState.nightColor to ShiftType.NIGHT,
-                    "📅 Выходной" to viewState.offColor to ShiftType.OFF
-                ).forEach { (pair, type) ->
-                    val (label, color) = pair
-                    PremiumColorRow(
-                        label = label,
-                        color = color,
-                        onClick = {
-                            selectedShiftType = type
-                            showColorPicker = true
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Button(
-                    onClick = { viewModel.resetAllColors(onColorsChange) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF5252).copy(alpha = 0.12f),
-                        contentColor = Color(0xFFFF5252)
-                    ),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Сбросить все цвета", color = Color(0xFFFF5252), fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 2.dp))
-                }
-            }
-        }
+        AppearanceSettingCard(
+            viewState = viewState,
+            primary = primary,
+            onPrimaryPicker = { showPrimaryPicker = true },
+            onBackgroundPicker = { showBackgroundPicker = true },
+            onSurfacePicker = { showSurfacePicker = true },
+            onShiftColorPick = { type ->
+                selectedShiftType = type
+                showColorPicker = true
+            },
+            onResetColors = { viewModel.resetAllColors(onColorsChange) }
+        )
 
         // ---- 2.4 МАСШТАБ ИНТЕРФЕЙСА ----
-        PremiumSettingCard(
-            icon = "🔍",
-            title = "Масштаб интерфейса",
-            description = "${(uiScale * 100).roundToInt()}%"
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Мелкий", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                Text(
-                    "${(uiScale * 100).roundToInt()}%",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = primary
-                )
-                Text("Крупный", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            }
-            Slider(
-                value = uiScale,
-                onValueChange = onUiScaleChange,
-                valueRange = 0.7f..1.5f,
-                steps = 7,
-                colors = SliderDefaults.colors(
-                    thumbColor = primary,
-                    activeTrackColor = primary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .height(22.dp)
-            )
-            Text(
-                "Регулирует размер всех элементов и текста во вкладках",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-        }
+        UiScaleSettingCard(
+            uiScale = uiScale,
+            onUiScaleChange = onUiScaleChange,
+            primary = primary
+        )
 
         // ---- 2.5 ДИНАМИЧЕСКИЕ ЦВЕТА (MATERIAL YOU) ----
-        val useDynamicColors = remember { mutableStateOf(settings.getUseDynamicColors()) }
-        PremiumSettingCard(
-            icon = "✨",
-            title = "Динамические цвета",
-            description = if (useDynamicColors.value) "Material You" else "Вручную"
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (useDynamicColors.value) "Material You" else "Вручную",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                PremiumSwitch(
-                    checked = useDynamicColors.value,
-                    onCheckedChange = {
-                        useDynamicColors.value = it
-                        settings.saveUseDynamicColors(it)
-                        if (it) {
-                            // Сбрасываем кастомные цвета, чтобы применить динамические
-                            viewModel.resetAllColors(onColorsChange)
-                        }
-                        onThemeChange(isDarkTheme) // recreate
-                    },
-                    trackColor = primary
-                )
-            }
-        }
+        DynamicColorsSettingCard(
+            settings = settings,
+            isDarkTheme = isDarkTheme,
+            primary = primary,
+            onThemeChange = onThemeChange,
+            onResetColors = { viewModel.resetAllColors(onColorsChange) }
+        )
+
+        // ---- 2.6 OLED-РЕЖИМ (чисто чёрный фон для тёмной темы) ----
+        OledSettingCard(
+            useOled = useOled,
+            onOledChange = onOledChange,
+            primary = primary
+        )
 
         // ---- 3. ГРОМКОСТЬ ----
-        PremiumSettingCard(
-            icon = "🔊",
-            title = "Громкость",
-            description = "${(viewState.volume * 100).toInt()}%"
-        ) {
-            Slider(
-                value = viewState.volume,
-                onValueChange = { viewModel.setVolume(it) },
-                colors = SliderDefaults.colors(
-                    thumbColor = primary,
-                    activeTrackColor = primary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .height(22.dp)
-            )
-        }
+        VolumeSettingCard(
+            volume = viewState.volume,
+            onVolumeChange = { viewModel.setVolume(it) },
+            primary = primary
+        )
 
         // ---- 3.5 НАРАСТАНИЕ ГРОМКОСТИ ----
-        val rampSec = remember { mutableStateOf(settings.getVolumeRampSec()) }
-        PremiumSettingCard(
-            icon = "⏱️",
-            title = "Нарастание громкости",
-            description = "${rampSec.value} сек"
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Быстро", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                Text(
-                    "${rampSec.value} сек",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = primary
-                )
-                Text("Плавно", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            }
-            Slider(
-                value = rampSec.value.toFloat(),
-                onValueChange = {
-                    val s = it.toInt()
-                    rampSec.value = s
-                    settings.saveVolumeRampSec(s)
-                },
-                valueRange = 2f..30f,
-                steps = 13,
-                colors = SliderDefaults.colors(thumbColor = primary, activeTrackColor = primary),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(22.dp)
-            )
-            Text(
-                "Длительность плавного нарастания громкости будильника до максимума",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-        }
+        VolumeRampSettingCard(
+            settings = settings,
+            primary = primary
+        )
 
         // ---- 4. МЕЛОДИЯ ----
-        PremiumSettingCard(
-            icon = "🎵",
-            title = "Мелодия",
-            description = viewState.ringtoneName
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 18.dp)) {
-                Button(
-                    onClick = {
-                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-                            viewState.ringtoneUri?.let {
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it)
-                            }
-                        }
-                        ringtoneLauncher.launch(intent)
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Выбрать", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp))
-                }
-                OutlinedButton(
-                    onClick = { viewModel.playRingtone() },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text(if (viewState.isPlaying) "⏹  Стоп" else "▶  Слушать", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
+        RingtoneSettingCard(
+            viewState = viewState,
+            ringtoneLauncher = ringtoneLauncher,
+            onPlayStop = { viewModel.playRingtone() },
+            primary = primary
+        )
 
-        // ---- 5. ГРАФИК СМЕН ----
-        PremiumSettingCard(
-            icon = "🗓️",
-            title = "График смен",
-            description = viewState.scheduleType.displayName
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 18.dp)
-            ) {
-                ScheduleType.entries.forEach { type ->
-                    val selected = viewState.scheduleType == type
-                    Surface(
-                        onClick = { viewModel.setScheduleType(type, scheduler) },
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (selected) primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                        contentColor = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            "График №${type.ordinal + 1}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
-            }
-            Text(
-                text = "${viewState.scheduleType.brigadeCount} бригад · смены по ${viewState.scheduleType.shiftHours.toInt()} ч",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 18.dp, top = 6.dp)
-            )
-        }
+        // ---- 5. ГРАФИК СМЕН + БРИГАДА (ОБЪЕДИНЁННЫЙ БЛОК) ----
+        BrigadeAndScheduleCard(
+            viewState = viewState,
+            onScheduleTypeChange = { viewModel.setScheduleType(it, scheduler) },
+            onBrigadeChange = { viewModel.setBrigade(it, scheduler) },
+            primary = primary
+        )
 
-        // ---- 5. БРИГАДА ----
-        PremiumSettingCard(
-            icon = "👥",
-            title = "Бригада",
-            description = "Активна: ${viewState.brigade}"
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 18.dp)
-            ) {
-                viewState.scheduleType.brigadeRange().forEach { num ->
-                    val selected = viewState.brigade == num
-                    Surface(
-                        onClick = { viewModel.setBrigade(num, scheduler) },
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (selected) primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                        contentColor = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            num.toString(),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
-            }
-        }
+        // ---- 5.4 ВИДЖЕТ ----
+        WidgetSettingCard(primary = primary)
 
         // ---- 5.5 ПРЕД-НАПОМИНАНИЕ О СМЕНЕ ----
-        val reminderEnabled = remember { mutableStateOf(settings.getShiftReminderMinutes() > 0) }
-        val reminderMinutes = remember { mutableStateOf(settings.getShiftReminderMinutes()) }
-        PremiumSettingCard(
-            icon = "⏰",
-            title = "Напоминать о смене",
-            description = if (reminderEnabled.value) "За ${reminderMinutes.value} мин" else "Выключено"
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (reminderEnabled.value) "Напоминание за ${reminderMinutes.value} мин" else "Выключено",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                PremiumSwitch(
-                    checked = reminderEnabled.value,
-                    onCheckedChange = { checked ->
-                        reminderEnabled.value = checked
-                        reminderMinutes.value = if (checked) reminderMinutes.value.coerceAtLeast(5) else 0
-                        settings.saveShiftReminderMinutes(reminderMinutes.value)
-                        // Применяем новое значение к уже запланированным сменным
-                        // будильникам текущей бригады, иначе изменение вступит в
-                        // силу только при следующем перепланировании (п.6.7).
-                        scheduler.rescheduleAllAlarmsForBrigade(settings.getBrigade())
-                    },
-                    trackColor = primary
-                )
-            }
-            if (reminderEnabled.value) {
-                Slider(
-                    value = reminderMinutes.value.toFloat(),
-                    onValueChange = {
-                        reminderMinutes.value = it.toInt().coerceIn(5, 180)
-                        settings.saveShiftReminderMinutes(reminderMinutes.value)
-                    },
-                    onValueChangeFinished = {
-                        scheduler.rescheduleAllAlarmsForBrigade(settings.getBrigade())
-                    },
-                    valueRange = 5f..180f,
-                    steps = 34,
-                    colors = SliderDefaults.colors(thumbColor = primary, activeTrackColor = primary),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(22.dp)
-                )
-                Text(
-                    "Показывать уведомление за выбранное время до начала смены",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 18.dp)
-                )
-            }
-        }
+        ShiftReminderSettingCard(
+            settings = settings,
+            scheduler = scheduler,
+            primary = primary
+        )
 
         // ---- 6. О ПРИЛОЖЕНИИ ----
-        PremiumSettingCard(
-            icon = "ℹ️",
-            title = "О приложении",
-            description = "Версия ${getAppVersion(context)}"
-        ) {
-            var showAbout by remember { mutableStateOf(false) }
-            Button(
-                onClick = { showAbout = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = primary),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text("Открыть", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp))
-            }
-            if (showAbout) {
-                AlertDialog(
-                    onDismissRequest = { showAbout = false },
-                    modifier = Modifier.fillMaxSize(),
-                    title = null,
-                    text = {
-                        Box(Modifier.fillMaxSize()) {
-                            AboutScreen()
-                            IconButton(
-                                onClick = { showAbout = false },
-                                modifier = Modifier.align(Alignment.TopEnd)
-                            ) {
-                                Text("✕", fontSize = 20.sp, color = Color.White)
-                            }
-                        }
-                    },
-                    confirmButton = {}
-                )
-            }
-        }
+        AboutSettingCard(primary = primary)
 
         Spacer(modifier = Modifier.height(12.dp))
     }
@@ -693,42 +366,3 @@ fun Color.Companion.HSV(h: Float, s: Float, v: Float): Color {
     return Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
 }
 
-// ===== КАРТОЧКА НАСТРОЙКИ =====
-@Composable
-private fun PremiumSettingCard(
-    icon: String,
-    title: String,
-    description: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    PremiumSectionCard {
-        Column {
-            PremiumSectionTitle(icon = icon, title = title, subtitle = description)
-            PremiumDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-            content()
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-    }
-}
-
-// ===== СТРОКА ЦВЕТА =====
-@Composable
-private fun PremiumColorRow(label: String, color: Color, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .background(color, CircleShape)
-                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), CircleShape)
-        )
-    }
-}

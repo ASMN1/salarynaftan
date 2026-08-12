@@ -26,6 +26,7 @@ import com.example.salarynaftan.export.SalaryPdfExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 // ===== КАРТОЧКА РЕЗУЛЬТАТОВ РАСЧЁТА =====
 
@@ -234,7 +235,10 @@ fun ResultCard(
                                 context.startActivity(Intent.createChooser(viewIntent, "Открыть PDF"))
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Timber.e(e, "Ошибка экспорта расчёта в PDF")
+                            withContext(Dispatchers.Main) {
+                                AppNotifier.showError("Не удалось экспортировать PDF")
+                            }
                         }
                     }
                 },

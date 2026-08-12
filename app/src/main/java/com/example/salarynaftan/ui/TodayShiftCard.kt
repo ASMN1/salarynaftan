@@ -43,7 +43,7 @@ import java.util.Locale
 fun TodayShiftCard(
     brigade: Int,
     primaryColor: Color,
-    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType
+    scheduleType: ScheduleType = ScheduleType.GRAPH_1
 ) {
     val today = remember { LocalDate.now() }
     val shift = remember(brigade, scheduleType) { ShiftSchedule.shiftFor(today, brigade, scheduleType) }
@@ -78,50 +78,44 @@ fun TodayShiftCard(
             .padding(horizontal = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f)),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Цветной индикатор смены
+            // Цветной индикатор смены — тоньше и ниже
             Box(
                 modifier = Modifier
-                    .width(8.dp)
-                    .height(54.dp)
-                    .background(shiftColor, RoundedCornerShape(6.dp))
+                    .width(6.dp)
+                    .height(36.dp)
+                    .background(shiftColor, RoundedCornerShape(4.dp))
             )
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Сегодня",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("ru"))),
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
                 }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = if (shift == ShiftType.OFF) "Выходной день" else shift.displayName,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (shift == ShiftType.NIGHT) shiftColor else MaterialTheme.colorScheme.onSurface
-                )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Бригада $brigade" + (ShiftSchedule.shiftStartTime(shift, scheduleType)?.let { " · с ${it}" } ?: ""),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    text = if (shift == ShiftType.OFF) "Выходной день" else "${shift.displayName} · Бр $brigade",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (shift == ShiftType.NIGHT) shiftColor else MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -130,14 +124,14 @@ fun TodayShiftCard(
                 if (isActive) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "до конца смены",
-                            fontSize = 10.sp,
+                            text = "до конца",
+                            fontSize = 9.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(1.dp))
                         Text(
                             text = formatRemaining(remaining!!),
-                            fontSize = 15.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = primaryColor
                         )
@@ -146,16 +140,16 @@ fun TodayShiftCard(
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "смена",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(1.dp))
                         Text(
                             text = ShiftSchedule.shiftStartTime(shift, scheduleType)?.let {
-                                if (it.isAfter(LocalDateTime.now().toLocalTime())) "сегодня с $it"
-                                else "завтра с $it"
+                                if (it.isAfter(LocalDateTime.now().toLocalTime())) "сегодня в $it"
+                                else "завтра в $it"
                             } ?: "",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )

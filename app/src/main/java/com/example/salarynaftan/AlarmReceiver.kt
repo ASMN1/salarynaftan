@@ -11,8 +11,12 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import timber.log.Timber
+import com.example.salarynaftan.di.AppDependencies
 
 class AlarmReceiver : BroadcastReceiver() {
+    private val alarmScheduler: AlarmScheduler
+        get() = AppDependencies.alarmScheduler
+
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
 
@@ -97,7 +101,7 @@ class AlarmReceiver : BroadcastReceiver() {
             if (shiftTypeName != null && alarmTime.isNotEmpty()) {
                 try {
                     val shiftType = ShiftType.valueOf(shiftTypeName)
-                    AlarmScheduler(context).rescheduleShiftAlarmAfterRing(
+                    alarmScheduler.rescheduleShiftAlarmAfterRing(
                         shiftType = shiftType,
                         brigade = brigade,
                         index = alarmIndex,

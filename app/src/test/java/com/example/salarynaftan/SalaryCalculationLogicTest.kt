@@ -31,7 +31,6 @@ class SalaryCalculationLogicTest {
 
     private fun monthInput(
         normHours: String = "132",
-        prazdnHours: String = "0",
         zaOtsutstvuushego: String = "0",
         kvartalka: String = "0",
         gazetaInput: String = "0",
@@ -42,7 +41,6 @@ class SalaryCalculationLogicTest {
         stravitaInput: String = "0"
     ) = SalaryCalculator.MonthInput(
         normHours = parseNonNegative(normHours),
-        prazdnHours = parseNonNegative(prazdnHours),
         zaOtsutstvuushego = parseNonNegative(zaOtsutstvuushego),
         kvartalka = parseNonNegative(kvartalka),
         gazetaInput = parseNonNegative(gazetaInput),
@@ -57,7 +55,7 @@ class SalaryCalculationLogicTest {
         month: SalaryCalculator.MonthInput,
         inputs: SalaryCalculator.CalcInputs,
         year: Int = 2027,
-        monthIndex: Int = 0 // Январь
+        monthIndex: Int = 0
     ): CalculationResultWithError {
         return SalaryCalculator.calculate(
             year = year,
@@ -70,12 +68,10 @@ class SalaryCalculationLogicTest {
 
     @Test
     fun `calculation with valid inputs succeeds`() {
-        val result = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val result = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertNull(result.error)
     }
 
-    // Внимание: полный расчёт учитывает график смен, поэтому okladReal
-    // равен okladBase только условно. Здесь проверяем сам факт корректной работы.
     @Test
     fun `calculation produces non-negative amounts`() {
         val result = performCalculate(monthInput(normHours = "132"), calcInputs())
@@ -92,54 +88,54 @@ class SalaryCalculationLogicTest {
 
     @Test
     fun `pension is 6 percent of sumBeforePension`() {
-        val result = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val result = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertEquals(result.sumBeforePension * 0.06, result.pension, 0.01)
     }
 
     @Test
     fun `children deduction reduces tax base`() {
-        val resultWithChildren = performCalculate(monthInput(normHours = "132", prazdnHours = "8", childrenCount = "2"), calcInputs())
-        val resultWithout = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val resultWithChildren = performCalculate(monthInput(normHours = "132", childrenCount = "2"), calcInputs())
+        val resultWithout = performCalculate(monthInput(normHours = "132"), calcInputs())
         org.junit.Assert.assertTrue(resultWithChildren.podohodnyBase < resultWithout.podohodnyBase)
     }
 
     @Test
     fun `fszn and prof are each 1 percent of dirty`() {
-        val result = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val result = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertEquals(result.dirty * 0.01, result.fszn, 0.001)
         assertEquals(result.dirty * 0.01, result.prof, 0.001)
     }
 
     @Test
     fun `gazeta deduction reduces totalClean`() {
-        val withGaz = performCalculate(monthInput(normHours = "132", prazdnHours = "8", gazetaInput = "50"), calcInputs())
-        val withoutGaz = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val withGaz = performCalculate(monthInput(normHours = "132", gazetaInput = "50"), calcInputs())
+        val withoutGaz = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertEquals(withoutGaz.totalClean - 50.0, withGaz.totalClean, 0.01)
     }
 
     @Test
     fun `mmDeti adds 45 per child`() {
-        val result = performCalculate(monthInput(normHours = "132", prazdnHours = "8", mmDetiCount = "2"), calcInputs())
+        val result = performCalculate(monthInput(normHours = "132", mmDetiCount = "2"), calcInputs())
         assertEquals(90.0, result.mmDeti, 0.01)
     }
 
     @Test
     fun `kvartalka increases sumBeforePension`() {
-        val withKvart = performCalculate(monthInput(normHours = "132", prazdnHours = "8", kvartalka = "200"), calcInputs())
-        val withoutKvart = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val withKvart = performCalculate(monthInput(normHours = "132", kvartalka = "200"), calcInputs())
+        val withoutKvart = performCalculate(monthInput(normHours = "132"), calcInputs())
         org.junit.Assert.assertTrue(withKvart.sumBeforePension > withoutKvart.sumBeforePension)
     }
 
     @Test
     fun `podohodny is 13 percent of base`() {
-        val result = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val result = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertEquals(result.podohodnyBase * 0.13, result.podohodny, 0.01)
     }
 
     @Test
     fun `stravita deduction reduces totalClean`() {
-        val withStrav = performCalculate(monthInput(normHours = "132", prazdnHours = "8", stravitaInput = "30"), calcInputs())
-        val withoutStrav = performCalculate(monthInput(normHours = "132", prazdnHours = "8"), calcInputs())
+        val withStrav = performCalculate(monthInput(normHours = "132", stravitaInput = "30"), calcInputs())
+        val withoutStrav = performCalculate(monthInput(normHours = "132"), calcInputs())
         assertEquals(withoutStrav.totalClean - 30.0, withStrav.totalClean, 0.01)
     }
 
@@ -149,64 +145,40 @@ class SalaryCalculationLogicTest {
         assertNotNull(result.error)
     }
 
-    // БУГ: праздничный день, в который сотрудника не было на работе (отпуск
-    // или невыход), НЕ должен начисляться как праздничный. Раньше расчёт брал
-    // полное число праздничных часов из поля «Праздн. (авто)» (без учёта
-    // пропусков), из-за чего праздничный день считался, хотя человека не было.
+    // Праздничный день, в который сотрудника не было на работе (отпуск или
+    // невыход), НЕ должен начисляться как праздничный. Праздничные часы
+    // считаются автоматически в SalaryCalculator через stats.holidayHours.
     @Test
     fun `holiday hours are skipped when the holiday day is missed or vacation`() {
-        // Выбираем месяц, в котором есть праздник, и находим его день.
-        // Расчёт идёт для всех месяцев и проверяет: если весь праздничный день
-        // помечен отпуском/невыходом, праздничные часы должны обратиться в 0.
         var foundHoliday = false
         for (year in 2026..2027) {
             for (monthIndex in 0..11) {
                 val holidayDays = (1..java.time.YearMonth.of(year, monthIndex + 1).lengthOfMonth())
                     .filter { Holidays.isHoliday(java.time.YearMonth.of(year, monthIndex + 1).atDay(it)) }
                     .filter {
-                        // Только если в этот день по графику есть смена (не выходной)
                         ShiftSchedule.shiftFor(java.time.YearMonth.of(year, monthIndex + 1).atDay(it), 1) != ShiftType.OFF
                     }
                 if (holidayDays.isEmpty()) continue
 
                 foundHoliday = true
-
-                // Отмечаем ВСЕ праздничные дни этого месяца как пропущенные (отпуск).
                 val allMarked = holidayDays.toSet()
 
-                val withHoliday = performCalculate(
-                    month = monthInput(normHours = "170", prazdnHours = "8"),
-                    inputs = calcInputs(),
-                    year = year,
-                    monthIndex = monthIndex
-                )
                 val withAllHolidaysMarked = performCalculate(
-                    month = monthInput(normHours = "170", prazdnHours = "8"),
-                    inputs = calcInputs(
-                        // currentVacation в тестовом хелпере по умолчанию пусто — создаём с vacation
-                    ).let { h ->
+                    month = monthInput(normHours = "170"),
+                    inputs = calcInputs().let { h ->
                         SalaryCalculator.CalcInputs(
-                            okladBase = h.okladBase,
-                            koefStazh = h.koefStazh,
-                            koefPrem = h.koefPrem,
+                            okladBase = h.okladBase, koefStazh = h.koefStazh, koefPrem = h.koefPrem,
                             currentBrigade = h.currentBrigade,
-                            currentMissed = h.currentMissed,
-                            currentVacation = allMarked,
-                            prevMonthData = h.prevMonthData,
-                            prevMissed = h.prevMissed,
-                            prevVacation = h.prevVacation
+                            currentMissed = h.currentMissed, currentVacation = allMarked,
+                            prevMonthData = h.prevMonthData, prevMissed = h.prevMissed, prevVacation = h.prevVacation
                         )
                     },
-                    year = year,
-                    monthIndex = monthIndex
+                    year = year, monthIndex = monthIndex
                 )
 
-                // Когда все праздничные дни пропущены, праздничные часы должны стать 0.
-                org.junit.Assert.assertEquals(
+                assertEquals(
                     "Праздничные часы должны быть 0, если все праздничные дни — отпуск (year=$year, month=$monthIndex)",
-                    0.0,
-                    withAllHolidaysMarked.prazdn,
-                    0.01
+                    0.0, withAllHolidaysMarked.prazdn, 0.01
                 )
                 break
             }

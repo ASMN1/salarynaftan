@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.example.salarynaftan.di.AppDependencies
 
 /**
  * Экран настройки виджета (выбор бригады).
@@ -37,11 +38,10 @@ class WidgetConfigureActivity : Activity() {
 
         setResult(RESULT_CANCELED)
 
-        val prefs = getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
-        val currentBrigade = prefs.getInt(PreferenceKeys.BRIGADE_KEY, 1)
-
         // Диапазон бригад зависит от активного графика (№1 — 5 бригад, №2 — 4).
-        val scheduleType = SettingsManager(this).getScheduleType()
+        val settings = AppDependencies.settingsManager
+        val scheduleType = settings.getScheduleType()
+        val currentBrigade = settings.getBrigade()
 
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -67,7 +67,7 @@ class WidgetConfigureActivity : Activity() {
                     // сам триггерит обновление виджета. Раньше писали только в
                     // SharedPreferences, из-за чего приложение оставалось со старой
                     // бригадой до перезапуска (рассинхрон источником).
-                    SettingsManager(this@WidgetConfigureActivity).setBrigade(i)
+                    settings.setBrigade(i)
 
                     // Return OK
                     val resultValue = Intent().apply {

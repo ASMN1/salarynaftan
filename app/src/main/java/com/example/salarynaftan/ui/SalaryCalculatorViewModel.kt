@@ -10,17 +10,20 @@ import com.example.salarynaftan.data.SalaryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 
 class SalaryCalculatorViewModel(
     private val savedStateHandle: SavedStateHandle,
     private val settingsManager: SettingsManager,
-    private val salaryRepository: SalaryRepository
+    private val salaryRepository: SalaryRepository,
+    private val appScope: CoroutineScope = com.example.salarynaftan.AppCoroutineScope
 ) : ViewModel() {
 
     enum class SalaryField {
-        NORM_HOURS,
         ZA_OTSUTSTVUUSHEGO,
         KVARTALKA,
         GAZETA,
@@ -48,6 +51,12 @@ class SalaryCalculatorViewModel(
     private val _uiState = MutableStateFlow(SalaryUiState())
     val uiState: StateFlow<SalaryUiState> = _uiState.asStateFlow()
 
+    // Отменяет предыдущее сохранение при быстром переключении месяца/года,
+    // чтобы конкурентные записи в Room не перезаписывали данные друг друга (п.4.5).
+    private var saveJob: Job? = null
+    private var loadJob: Job? = null
+    private var inputSaveJob: Job? = null
+
     private val months = MonthlyNorms.list
 
     init {
@@ -67,11 +76,13 @@ class SalaryCalculatorViewModel(
 
     fun selectMonth(index: Int) {
         if (index in months.indices && index != _uiState.value.selectedMonthIndex) {
-            // Сохраняем текущий ввод до переключения, чтобы начисления/вычеты
-            // не терялись, если пользователь переключил месяц без «Сохранить»
-            // (BUG: потеря несохранённых начислений).
-            viewModelScope.launch {
-                try { saveCurrentMonthData() } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
+            // Захватываем состояние ДО обновления: saveCurrentMonthData читает
+            // uiState внутри корутины, и без захвата сохранились бы данные
+            // НОВОГО месяца (гонка при быстром переключении).
+            val stateToSave = _uiState.value
+            saveJob?.cancel()
+            saveJob = viewModelScope.launch {
+                try { saveCurrentMonthData(stateToSave) } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
             }
             savedStateHandle["selectedMonthIndex"] = index
             settingsManager.saveSelectedMonthIndex(index)
@@ -82,8 +93,10 @@ class SalaryCalculatorViewModel(
 
     fun selectYear(year: Int) {
         if (year != _uiState.value.selectedYear) {
-            viewModelScope.launch {
-                try { saveCurrentMonthData() } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
+            val stateToSave = _uiState.value
+            saveJob?.cancel()
+            saveJob = viewModelScope.launch {
+                try { saveCurrentMonthData(stateToSave) } catch (e: Exception) { AppNotifier.showError("Не удалось сохранить месяц") }
             }
             savedStateHandle["selectedYear"] = year
             _uiState.update { it.copy(selectedYear = year) }
@@ -95,34 +108,15 @@ class SalaryCalculatorViewModel(
     // не «гонялись»: каждая корутина читает состояние, актуальное на момент
     // вызова, а не обновлённое после старта (исправление гонки данных).
     private fun loadMonthData(monthIndex: Int, year: Int) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 val month = months.getOrNull(monthIndex) ?: return@launch
                 val saved = salaryRepository.getMonthData(year, monthIndex)
 
-                // Норма часов и праздничные — всегда берутся автоматически:
-                // норма из справочника по году (MonthlyNorms), праздничные из
-                // календаря (Holidays). Ручной ввод этих полей убран — значения
-                // не меняются и всегда согласованы с графиком.
+                // Норма часов всегда авто из справочника, праздничные — в SalaryCalculator.
                 val scheduleType = settingsManager.getScheduleType()
-                // Для Графика №1 норма берётся из справочника (MonthlyNorms) и не
-                // редактируется вручную. Для Графика №2 таблица норм ещё не пришла,
-                // поэтому норма — поле ручного ввода: берём сохранённое значение
-                // (или пустое поле для ввода при первом открытии).
-                val norm = if (scheduleType == ScheduleType.GRAPH_2) {
-                    saved?.normHours ?: ""
-                } else {
-                    MonthlyNorms.norm(year, monthIndex).toString()
-                }
-                val holidayHours = SalaryCalculator.monthStats(
-                    year = year,
-                    monthIndex = monthIndex,
-                    brigade = settingsManager.getBrigade(),
-                    missedDays = emptySet(),
-                    vacationDays = emptySet(),
-                    scheduleType = scheduleType
-                ).holidayHours
-                val prazdn = if (holidayHours > 0) holidayHours.toString() else "0"
+                val norm = MonthlyNorms.norm(year, monthIndex, scheduleType).toString()
                 val otsut = saved?.zaOtsutstvuushego ?: ""
                 val kvart = saved?.kvartalka ?: ""
                 val gaz = saved?.gazetaInput ?: "0"
@@ -132,12 +126,12 @@ class SalaryCalculatorViewModel(
                 val children = saved?.childrenCountInput ?: "0"
                 val stravita = saved?.stravitaInput ?: "0"
 
+                if (_uiState.value.selectedMonthIndex != monthIndex || _uiState.value.selectedYear != year) return@launch
                 _uiState.update {
                     it.copy(
                         selectedMonthIndex = monthIndex,
                         selectedYear = year,
                         normHours = norm,
-                        prazdnHours = prazdn,
                         zaOtsutstvuushego = otsut,
                         kvartalka = kvart,
                         gazetaInput = gaz,
@@ -158,23 +152,31 @@ class SalaryCalculatorViewModel(
     }
 
     fun updateField(field: SalaryField, value: String) {
-        // Ранняя валидация ввода: не даём ввести число больше допустимого предела,
-        // чтобы ошибка выявлялась при вводе, а не при расчёте (п.6.3 анализа).
-        val digitsOnly = value.filter { it.isDigit() }
+        // Ранняя валидация ввода (п.6.1): разрешаем только цифры, запятую и точку
+        // (допустимые символы для чисел), чтобы мусор не попадал в состояние.
+        val sanitized = value.filter { it.isDigit() || it == ',' || it == '.' }
+        val digitsOnly = sanitized.filter { it.isDigit() }
         _uiState.update { current ->
             when (field) {
-                SalaryField.NORM_HOURS -> current.copy(normHours = value)
-                SalaryField.ZA_OTSUTSTVUUSHEGO -> current.copy(zaOtsutstvuushego = value)
-                SalaryField.KVARTALKA -> current.copy(kvartalka = value)
-                SalaryField.GAZETA -> current.copy(gazetaInput = value)
-                SalaryField.POZHERTVOVANJA -> current.copy(pozhertvovanjaInput = value)
-                SalaryField.SUBBOTNIK -> current.copy(subbotnikInput = value)
+                SalaryField.ZA_OTSUTSTVUUSHEGO -> current.copy(zaOtsutstvuushego = sanitized)
+                SalaryField.KVARTALKA -> current.copy(kvartalka = sanitized)
+                SalaryField.GAZETA -> current.copy(gazetaInput = sanitized)
+                SalaryField.POZHERTVOVANJA -> current.copy(pozhertvovanjaInput = sanitized)
+                SalaryField.SUBBOTNIK -> current.copy(subbotnikInput = sanitized)
                 SalaryField.MM_DETI ->
-                    current.copy(mmDetiCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_MM_DETI } == true) value else current.mmDetiCountInput)
+                    current.copy(mmDetiCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_MM_DETI } == true) sanitized else current.mmDetiCountInput)
                 SalaryField.CHILDREN_COUNT ->
-                    current.copy(childrenCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_CHILDREN } == true) value else current.childrenCountInput)
-                SalaryField.STRAVITA -> current.copy(stravitaInput = value)
+                    current.copy(childrenCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_CHILDREN } == true) sanitized else current.childrenCountInput)
+                SalaryField.STRAVITA -> current.copy(stravitaInput = sanitized)
             }
+        }
+        // Persist edits while the process is alive; onCleared is not guaranteed
+        // to run during process death. Debouncing avoids a Room write per key.
+        inputSaveJob?.cancel()
+        inputSaveJob = viewModelScope.launch {
+            delay(700)
+            runCatching { saveCurrentMonthData() }
+                .onFailure { AppNotifier.showError("Не удалось сохранить ввод") }
         }
     }
 
@@ -186,13 +188,11 @@ class SalaryCalculatorViewModel(
                 // ---- Валидация входных данных перед расчётом ----
                 val errors = mutableListOf<String>()
                 val norm = parseNonNegative(state.normHours)
-                val prazdn = parseNonNegative(state.prazdnHours)
                 val children = parseNonNegative(state.childrenCountInput)
                 val mmDeti = parseNonNegative(state.mmDetiCountInput)
                 if (norm <= 0) errors.add("Норма часов должна быть больше нуля")
                 if (norm > MAX_NORM_HOURS) errors.add("Норма часов слишком велика (max $MAX_NORM_HOURS)")
                 if (norm < MIN_NORM_HOURS) errors.add("Норма часов слишком мала (мин $MIN_NORM_HOURS)")
-                if (prazdn > norm && norm > 0) errors.add("Праздничных часов не может быть больше нормы")
                 if (children > MAX_CHILDREN) errors.add("Некорректное число детей (max $MAX_CHILDREN)")
                 if (mmDeti > MAX_MM_DETI) errors.add("Некорректное число базовых величин на детей (max $MAX_MM_DETI)")
 
@@ -227,6 +227,9 @@ class SalaryCalculatorViewModel(
     private suspend fun calculateForState(state: SalaryUiState): CalculationResultWithError {
         val monthIndex = state.selectedMonthIndex
         val year = state.selectedYear
+        // Год и индекс предыдущего месяца (п.3.3): единый helper вместо
+        // троекратного дублирования «if (monthIndex == 0) year - 1 else year».
+        val (prevYear, prevMonth) = prevOf(year, monthIndex)
 
         val inputs = SalaryCalculator.CalcInputs(
             okladBase = settingsManager.getSalary(),
@@ -235,18 +238,9 @@ class SalaryCalculatorViewModel(
             currentBrigade = settingsManager.getBrigade(),
             currentMissed = salaryRepository.getMissedDays(year, monthIndex),
             currentVacation = salaryRepository.getVacationDays(year, monthIndex),
-            prevMonthData = salaryRepository.getMonthData(
-                if (monthIndex == 0) year - 1 else year,
-                (monthIndex - 1 + 12) % 12
-            ),
-            prevMissed = salaryRepository.getMissedDays(
-                if (monthIndex == 0) year - 1 else year,
-                (monthIndex - 1 + 12) % 12
-            ),
-            prevVacation = salaryRepository.getVacationDays(
-                if (monthIndex == 0) year - 1 else year,
-                (monthIndex - 1 + 12) % 12
-            ),
+            prevMonthData = salaryRepository.getMonthData(prevYear, prevMonth),
+            prevMissed = salaryRepository.getMissedDays(prevYear, prevMonth),
+            prevVacation = salaryRepository.getVacationDays(prevYear, prevMonth),
             scheduleType = settingsManager.getScheduleType()
         )
 
@@ -258,6 +252,10 @@ class SalaryCalculatorViewModel(
             pensionPercent = settingsManager.getPpsPercent()
         )
     }
+
+    /** Возвращает (год, индекс) предыдущего месяца относительно [year]/[monthIndex]. */
+    private fun prevOf(year: Int, monthIndex: Int): Pair<Int, Int> =
+        if (monthIndex == 0) year - 1 to 11 else year to monthIndex - 1
 
     suspend fun saveToHistory(historyManager: HistoryManager) {
         val state = uiState.value
@@ -279,10 +277,30 @@ class SalaryCalculatorViewModel(
         }
     }
 
+    // Автосохранение при уничтожении ViewModel (сворачивание/убийство приложения):
+    // несохранённый ввод не теряется (п.6.4).
+    // ВАЖНО: viewModelScope уже отменён к моменту onCleared, поэтому используем
+    // отдельный scope, иначе корутина не выполнится.
+    override fun onCleared() {
+        saveJob?.cancel()
+        loadJob?.cancel()
+        inputSaveJob?.cancel()
+        val stateToSave = uiState.value
+        // Application-owned scope переживает ViewModel, но явно принадлежит
+        // приложению и не скрывает неуправляемый GlobalScope.
+        appScope.launch {
+            try { saveCurrentMonthData(stateToSave) } catch (_: Exception) { }
+        }
+        super.onCleared()
+    }
+
     private suspend fun saveCurrentMonthData() {
-        val monthIndex = uiState.value.selectedMonthIndex
-        val year = uiState.value.selectedYear
-        val state = uiState.value
+        saveCurrentMonthData(uiState.value)
+    }
+
+    private suspend fun saveCurrentMonthData(state: SalaryUiState) {
+        val monthIndex = state.selectedMonthIndex
+        val year = state.selectedYear
         // Загружаем существующую запись, чтобы не затереть missedDays/vacationDays
         val existing = salaryRepository.getMonthData(year, monthIndex)
         salaryRepository.saveMonthData(
@@ -290,7 +308,6 @@ class SalaryCalculatorViewModel(
                 year = year,
                 monthIndex = monthIndex,
                 normHours = state.normHours,
-                prazdnHours = state.prazdnHours,
                 zaOtsutstvuushego = state.zaOtsutstvuushego,
                 kvartalka = state.kvartalka,
                 gazetaInput = state.gazetaInput,

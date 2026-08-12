@@ -241,13 +241,11 @@ class ShiftScheduleTest {
     }
 
     @Test
-    fun `graph2 invalid brigade throws`() {
+    fun `graph2 invalid brigade coerced to valid range`() {
         val date = java.time.LocalDate.of(2026, 8, 8)
-        try {
-            ShiftSchedule.shiftFor(date, 5, ScheduleType.GRAPH_2)
-            throw AssertionError("ожидался IllegalArgumentException для бригады 5 в Графике №2")
-        } catch (_: IllegalArgumentException) {
-            // ожидаемо
-        }
+        // Бригада 5 вне диапазона Графика №2 (1..4) — коэрсится в 4
+        val shift = ShiftSchedule.shiftFor(date, 5, ScheduleType.GRAPH_2)
+        // Не крашит, а возвращает ту же смену, что для бригады 4
+        assertEquals(g2(date, 4), shift)
     }
 }

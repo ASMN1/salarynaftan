@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Скруглённая ячейка виджета. Белый цвет окрашивается в коде через
+     setDrawableParameters(SRC_IN) — цвет смены, ЗП/аванс, праздник, сегодня. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFFFF" />
+    <corners android:radius="8dp" />
+</shape>

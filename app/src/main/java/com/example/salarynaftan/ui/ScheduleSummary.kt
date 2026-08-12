@@ -57,7 +57,7 @@ fun MonthlyStatsCard(
     val scheduleType = settingsManager.getScheduleType()
     val shiftHours = scheduleType.shiftHours
     val dayShiftBonus = scheduleType.dayShiftNightBonusHours
-    val normVal = MonthlyNorms.norm(visibleMonth.year, monthIndex)
+    val normVal = MonthlyNorms.norm(visibleMonth.year, monthIndex, scheduleType)
 
     // Единый источник подсчёта итогов месяца — SalaryCalculator.monthStats
     // (тот же, что использует расчёт зарплаты). DRY: обе карточки считают

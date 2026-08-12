@@ -35,7 +35,7 @@ fun MonthSelector(
     var yearExpanded by remember { mutableStateOf(false) }
     // 2026 оставляем доступным: для него норма берётся по умолчанию из
     // MonthlyNorms.list. Годы 2027+ — из таблицы точных норм (supportedYears).
-    val years = (2026..2035).toList()
+    val years = MonthlyNorms.supportedYears().toList()
     val primary = MaterialTheme.colorScheme.primary
 
     PremiumSectionCard {

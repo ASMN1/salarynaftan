@@ -188,7 +188,14 @@ fun AlarmsTabScreen() {
             subtitle = "Автоматически по графику · бригада $selectedBrigade",
             icon = "🔄"
         ) {
-            listOf(ShiftType.MORNING, ShiftType.DAY, ShiftType.NIGHT).forEachIndexed { index, shiftType ->
+            // В Графике №2 нет дневной смены (только Утро/Ночь) — не показываем
+            // переключатель «День», который молча не работал бы (п.2.3).
+            val shiftTypes = if (settingsManager.getScheduleType() == ScheduleType.GRAPH_2) {
+                listOf(ShiftType.MORNING, ShiftType.NIGHT)
+            } else {
+                listOf(ShiftType.MORNING, ShiftType.DAY, ShiftType.NIGHT)
+            }
+            shiftTypes.forEachIndexed { index, shiftType ->
                 ShiftAlarmRow(
                     shiftType = shiftType,
                     brigade = selectedBrigade,
@@ -671,23 +678,22 @@ private fun RegularAlarmRow(
 @Composable
 private fun AutoSilenceCard(scheduler: AlarmScheduler) {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, Context.MODE_PRIVATE)
+    // Настройки авто-тишины — в DataStore (п.6.8); prefs не используется.
+    val settings = remember(context) { SettingsManager(context) }
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
 
-    var isEnabled by remember { mutableStateOf(prefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)) }
-    var startTime by remember { mutableStateOf(prefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00") }
-    var endTime by remember { mutableStateOf(prefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00") }
+    var isEnabled by remember { mutableStateOf(settings.getAutoSilenceEnabled()) }
+    var startTime by remember { mutableStateOf(settings.getAutoSilenceStart()) }
+    var endTime by remember { mutableStateOf(settings.getAutoSilenceEnd()) }
     val primary = MaterialTheme.colorScheme.primary
 
     fun save(enabled: Boolean, start: String, end: String) {
         isEnabled = enabled
         startTime = start
         endTime = end
-        prefs.edit()
-            .putBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, enabled)
-            .putString(PreferenceKeys.AUTO_SILENCE_START, start)
-            .putString(PreferenceKeys.AUTO_SILENCE_END, end)
-            .apply()
+        settings.saveAutoSilenceEnabled(enabled)
+        settings.saveAutoSilenceStart(start)
+        settings.saveAutoSilenceEnd(end)
         scheduler.updateAutoSilenceAlarms(enabled, start, end)
     }
 

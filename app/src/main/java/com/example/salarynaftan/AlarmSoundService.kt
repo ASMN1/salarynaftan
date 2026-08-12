@@ -36,7 +36,7 @@ import timber.log.Timber
  */
 class AlarmSoundService : Service() {
 
-    private lateinit var mediaPlayer: MediaPlayer
+    private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var volumeRampJob: Job? = null
@@ -45,6 +45,18 @@ class AlarmSoundService : Service() {
     // или повторный onStartCommand не должны перезапускать звук/вибрацию,
     // давая наложение/зацикливание. Сбрасывается в stopRinging().
     @Volatile private var isRinging = false
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Восстанавливаем громкость на максимум при уничтожении сервиса,
+        // чтобы при убийстве посреди нарастания громкость не осталась
+        // на промежуточном уровне (п.4.8 аудита).
+        try {
+            mediaPlayer?.setVolume(1f, 1f)
+        } catch (_: Exception) { }
+        stopRinging()
+        serviceScope.cancel()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -110,7 +122,10 @@ class AlarmSoundService : Service() {
         }
 
         try {
-            mediaPlayer = MediaPlayer().apply {
+            // Подготовка выполняется асинхронно (prepareAsync), чтобы не
+            // блокировать Main-поток сервиса (п.1.2). Старт и нарастание
+            // громкости происходят по готовности в setOnPreparedListener.
+            val mp = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
@@ -120,29 +135,38 @@ class AlarmSoundService : Service() {
                 setDataSource(this@AlarmSoundService, uri)
                 isLooping = true
                 setVolume(0f, 0f)
-                prepare()
-                start()
-            }
-
-            // Плавное нарастание громкости (ramp), как раньше в Activity.
-            if (rampSec <= 0 || targetVolume <= 0f) {
-                mediaPlayer.setVolume(targetVolume, targetVolume)
-            } else {
-                volumeRampJob = serviceScope.launch {
-                    var cur = 0f
-                    val steps = maxOf(1, rampSec * 2) // 2 шага в секунду
-                    val step = targetVolume / steps
-                    repeat(steps) {
-                        cur += step
-                        val mp = mediaPlayer
-                        try { mp.setVolume(cur, cur) } catch (e: Exception) {
-                            Timber.w(e, "Сбой при нарастании громкости")
-                            return@launch
+                val localTarget = targetVolume
+                val localRamp = rampSec
+                setOnPreparedListener { prepared ->
+                    // Если звонок уже остановлен (stopRinging) — не начинаем игру.
+                    if (!isRinging) { try { prepared.release() } catch (_: Exception) {}; return@setOnPreparedListener }
+                    try { prepared.start() } catch (_: Exception) {}
+                    if (localRamp <= 0 || localTarget <= 0f) {
+                        try { prepared.setVolume(localTarget, localTarget) } catch (_: Exception) {}
+                    } else {
+                        volumeRampJob = serviceScope.launch {
+                            var cur = 0f
+                            val steps = maxOf(1, localRamp * 2) // 2 шага в секунду
+                            val step = localTarget / steps
+                            repeat(steps) {
+                                cur += step
+                                try { prepared.setVolume(cur, cur) } catch (e: Exception) {
+                                    Timber.w(e, "Сбой при нарастании громкости")
+                                    return@launch
+                                }
+                                delay(500) // 500ms = 2 step/sec
+                            }
                         }
-                        delay(500) // 500ms = 2 step/sec
                     }
                 }
+                setOnErrorListener { _, _, _ ->
+                    Timber.e("MediaPlayer error при воспроизведении будильника")
+                    stopRinging()
+                    true
+                }
+                prepareAsync()
             }
+            mediaPlayer = mp
         } catch (e: Exception) {
             Timber.e(e, "Не удалось запустить звук будильника в сервисе")
         }
@@ -158,15 +182,10 @@ class AlarmSoundService : Service() {
 
     private fun stopRinging() {
         volumeRampJob?.cancel()
-        try { mediaPlayer.let { if (it.isPlaying) it.stop(); it.release() } } catch (_: Exception) { }
+        try { mediaPlayer?.let { if (it.isPlaying) it.stop(); it.release() } } catch (_: Exception) { }
+        mediaPlayer = null
         vibrator?.cancel()
         isRinging = false
-    }
-
-    override fun onDestroy() {
-        stopRinging()
-        serviceScope.cancel()
-        super.onDestroy()
     }
 
     companion object {

@@ -13,8 +13,14 @@ interface HistoryDao {
     @Query("SELECT * FROM salary_history WHERE year = :year ORDER BY monthIndex ASC LIMIT :limit")
     suspend fun getRecordsByYear(year: Int, limit: Int = MAX_RECORDS): List<SalaryHistoryEntity>
 
-    @Query("SELECT DISTINCT year FROM salary_history ORDER BY year DESC")
-    suspend fun getAvailableYears(): List<Int>
+    @Query("SELECT DISTINCT year FROM salary_history WHERE year > 0 ORDER BY year DESC LIMIT :limit")
+    suspend fun getAvailableYears(limit: Int = MAX_RECORDS): List<Int>
+
+    @Query("SELECT * FROM salary_history WHERE year = :unknownYear ORDER BY monthIndex ASC")
+    suspend fun getUnknownYearRecords(unknownYear: Int): List<SalaryHistoryEntity>
+
+    @Query("DELETE FROM salary_history WHERE year = :unknownYear AND monthIndex = :monthIndex")
+    suspend fun deleteUnknownYearRecord(unknownYear: Int, monthIndex: Int)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: SalaryHistoryEntity)

@@ -19,11 +19,15 @@ interface MonthSalaryDao {
     @Query("SELECT vacationDays FROM month_salary WHERE year = :year AND monthIndex = :monthIndex")
     suspend fun getVacationDays(year: Int, monthIndex: Int): String?
 
-    /** Атомарное обновление only missedDays — без read-modify-write гонки. */
-    @Query("UPDATE month_salary SET missedDays = :raw WHERE year = :year AND monthIndex = :monthIndex")
+    @Query("INSERT INTO month_salary (year, monthIndex, normHours, zaOtsutstvuushego, kvartalka, gazetaInput, pozhertvovanjaInput, subbotnikInput, mmDetiCountInput, childrenCountInput, stravitaInput, missedDays, vacationDays) VALUES (:year, :monthIndex, '', '', '', '0', '0', '0', '0', '0', '0', :raw, '') ON CONFLICT(year, monthIndex) DO UPDATE SET missedDays = excluded.missedDays")
     suspend fun updateMissedDays(year: Int, monthIndex: Int, raw: String)
 
-    /** Атомарное обновление only vacationDays. */
-    @Query("UPDATE month_salary SET vacationDays = :raw WHERE year = :year AND monthIndex = :monthIndex")
+    @Query("INSERT INTO month_salary (year, monthIndex, normHours, zaOtsutstvuushego, kvartalka, gazetaInput, pozhertvovanjaInput, subbotnikInput, mmDetiCountInput, childrenCountInput, stravitaInput, missedDays, vacationDays) VALUES (:year, :monthIndex, '', '', '', '0', '0', '0', '0', '0', '0', '', :raw) ON CONFLICT(year, monthIndex) DO UPDATE SET vacationDays = excluded.vacationDays")
     suspend fun updateVacationDays(year: Int, monthIndex: Int, raw: String)
+
+    @Query("SELECT * FROM month_salary WHERE year = :unknownYear ORDER BY monthIndex")
+    suspend fun getUnknownYearMonths(unknownYear: Int): List<MonthSalaryEntity>
+
+    @Query("DELETE FROM month_salary WHERE year = :unknownYear AND monthIndex = :monthIndex")
+    suspend fun deleteUnknownYearMonth(unknownYear: Int, monthIndex: Int)
 }

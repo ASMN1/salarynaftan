@@ -70,4 +70,33 @@ object Notifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+
+    /**
+     * Пред-напоминание о смене (п.6.7). Использует отдельный канал
+     * CHANNEL_SHIFT_REMINDER со звуком и вибрацией по умолчанию,
+     * чтобы напоминание было заметным. При тапе открывает вкладку «График».
+     */
+    fun shiftReminder(
+        context: Context,
+        title: String,
+        text: String,
+        notificationId: Int
+    ): NotificationCompat.Builder {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            putExtra("selected_tab", 0)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = activityPendingIntent(context, notificationId, openIntent)
+        return NotificationCompat.Builder(context, App.CHANNEL_SHIFT_REMINDER)
+            .setSmallIcon(R.drawable.ic_alarm_notification)
+            .setColor(BRAND_COLOR)
+            .setColorized(true)
+            .setLocalOnly(true)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+    }
 }

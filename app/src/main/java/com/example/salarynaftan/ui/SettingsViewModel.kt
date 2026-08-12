@@ -108,13 +108,14 @@ class SettingsViewModel(
     }
 
     fun setTheme(isDark: Boolean, onThemeChange: (Boolean) -> Unit) {
-        val defaultPrimary = if (isDark) Color(0xFF00E676) else Color(0xFF00A859)
-        val defaultBg = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
-        val defaultSurface = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F5F5)
-        val defaultMorning = Color(ShiftType.MORNING.defaultColorArgb)
-        val defaultDay = Color(ShiftType.DAY.defaultColorArgb)
-        val defaultNight = Color(ShiftType.NIGHT.defaultColorArgb)
-        val defaultOff = Color(ShiftType.OFF.defaultColorArgb)
+        // Единый источник дефолтных цветов (п.2.3).
+        val defaultPrimary = ThemeDefaults.primary(isDark)
+        val defaultBg = ThemeDefaults.background(isDark)
+        val defaultSurface = ThemeDefaults.surface(isDark)
+        val defaultMorning = ThemeDefaults.morning()
+        val defaultDay = ThemeDefaults.day()
+        val defaultNight = ThemeDefaults.night()
+        val defaultOff = ThemeDefaults.off()
 
         settingsManager.savePrimaryColor(defaultPrimary)
         settingsManager.saveBackgroundColor(defaultBg)
@@ -180,13 +181,14 @@ class SettingsViewModel(
 
     fun resetAllColors(onColorsChange: (Color, Color, Color) -> Unit) {
         val isDark = _uiState.value.isDarkTheme
-        val defaultPrimary = if (isDark) Color(0xFF00E676) else Color(0xFF00A859)
-        val defaultBg = if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
-        val defaultSurface = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F5F5)
-        val defaultMorning = Color(ShiftType.MORNING.defaultColorArgb)
-        val defaultDay = Color(ShiftType.DAY.defaultColorArgb)
-        val defaultNight = Color(ShiftType.NIGHT.defaultColorArgb)
-        val defaultOff = Color(ShiftType.OFF.defaultColorArgb)
+        // Единый источник дефолтных цветов (п.2.3).
+        val defaultPrimary = ThemeDefaults.primary(isDark)
+        val defaultBg = ThemeDefaults.background(isDark)
+        val defaultSurface = ThemeDefaults.surface(isDark)
+        val defaultMorning = ThemeDefaults.morning()
+        val defaultDay = ThemeDefaults.day()
+        val defaultNight = ThemeDefaults.night()
+        val defaultOff = ThemeDefaults.off()
 
         settingsManager.savePrimaryColor(defaultPrimary)
         settingsManager.saveBackgroundColor(defaultBg)
@@ -221,12 +223,17 @@ class SettingsViewModel(
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(getApplication(), uri)
                 setOnErrorListener { _, _, _ -> stopPlayback(); true }
-                prepare()
                 setVolume(_uiState.value.volume, _uiState.value.volume)
                 setOnCompletionListener { stopPlayback() }
-                start()
+                // prepareAsync не блокирует главный поток (п.1.5): подготовка
+                // рингтона выполняется в фоне, а воспроизведение стартует
+                // по готовности в setOnPreparedListener.
+                setOnPreparedListener { mp ->
+                    _uiState.update { it.copy(isPlaying = true) }
+                    mp.start()
+                }
+                prepareAsync()
             }
-            _uiState.update { it.copy(isPlaying = true) }
         } catch (e: Exception) {
             Timber.e(e, "Не удалось воспроизвести рингтон")
             stopPlayback()

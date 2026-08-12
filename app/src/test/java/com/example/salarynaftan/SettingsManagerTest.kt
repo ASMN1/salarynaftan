@@ -31,7 +31,13 @@ class SettingsManagerTest {
         context = ApplicationProvider.getApplicationContext()
         // Очищаем файл DataStore — иначе значения «протекают» между тестами.
         DataStoreManagerTest.clearDataStore(context)
+        // Сбрасываем singleton-кэш: удаление файла не меняет уже загруженные
+        // значения существующего DataStoreManager.
+        com.example.salarynaftan.data.DataStoreManager.clearInstances()
         manager = SettingsManager(context)
+        // График №2 ограничивает бригаду четырьмя; явно фиксируем базовый
+        // график тестов, чтобы результат не зависел от порядка тестов.
+        manager.setScheduleType(ScheduleType.GRAPH_1)
     }
 
     @Test

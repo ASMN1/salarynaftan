@@ -5,7 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
+import timber.log.Timber
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -75,27 +75,41 @@ class ShiftAlarmScheduler(
         index: Int,
         timeStr: String
     ) {
+        val scheduleType = settingsManager.getScheduleType()
         val parts = timeStr.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: 6
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        // Валидация: коэрсим в допустимый диапазон, чтобы LocalTime.of не бросил
+        // DateTimeException при невалидном "25:99" (п.1.4).
+        val hour = (parts.getOrNull(0)?.toIntOrNull() ?: 6).coerceIn(0, 23)
+        val minute = (parts.getOrNull(1)?.toIntOrNull() ?: 0).coerceIn(0, 59)
 
         var targetDate = LocalDate.now()
         val nowTime = LocalTime.now()
         val candidateToday = LocalTime.of(hour, minute)
 
-        if (ShiftSchedule.shiftFor(targetDate, brigade) != type || !candidateToday.isAfter(nowTime)) {
+        var foundMatch = true  // если смена сегодня и время ещё не прошло
+
+        if (ShiftSchedule.shiftFor(targetDate, brigade, scheduleType) != type || !candidateToday.isAfter(nowTime)) {
             targetDate = targetDate.plusDays(1)
 
             // Ищем до конца цикла смен: длина цикла гарантирует, что нужный
             // тип смены встретится за один полный проход (детерминированный
             // поиск вместо жёстких 11 попыток). Длина зависит от графика.
             var attempts = 0
-            while (ShiftSchedule.shiftFor(targetDate, brigade) != type &&
-                attempts < ShiftSchedule.cycleSizeFor()
+            while (ShiftSchedule.shiftFor(targetDate, brigade, scheduleType) != type &&
+                attempts < ShiftSchedule.cycleSizeFor(scheduleType)
             ) {
                 targetDate = targetDate.plusDays(1)
                 attempts++
             }
+            // Если тип смены не встречается в выбранном графике (например, «День»
+            // отсутствует в Графике №2), будильник некорректно «прилипнет» к чужому
+            // дню и зазвонит не в тот день. Такой будильник просто не ставим.
+            foundMatch = ShiftSchedule.shiftFor(targetDate, brigade, scheduleType) == type
+        }
+
+        if (!foundMatch) {
+            Timber.w("Тип смены ${type.name} не существует в активном графике — будильник не запланирован")
+            return
         }
 
         val targetMillis = LocalDateTime.of(
@@ -138,9 +152,11 @@ class ShiftAlarmScheduler(
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
                 alarmManager.setAlarmClock(info, pendingIntent)
+            } else {
+                Timber.w("Точный сменный будильник не запланирован (нет разрешения exact alarm)")
             }
         } catch (e: Exception) {
-            Log.e("ShiftAlarmScheduler", "Ошибка установки будильника для смены", e)
+            Timber.e(e, "Ошибка установки будильника для смены")
         }
 
         // Пред-напоминание о смене (п.6.7): если включено, ставим отдельный
@@ -160,8 +176,8 @@ class ShiftAlarmScheduler(
         leadMinutes: Int
     ) {
         val parts = timeStr.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: 6
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val hour = (parts.getOrNull(0)?.toIntOrNull() ?: 6).coerceIn(0, 23)
+        val minute = (parts.getOrNull(1)?.toIntOrNull() ?: 0).coerceIn(0, 59)
         val reminderMillis = LocalDateTime.of(targetDate, LocalTime.of(hour, minute))
             .minusMinutes(leadMinutes.toLong())
             .atZone(ZoneId.systemDefault())
@@ -192,7 +208,7 @@ class ShiftAlarmScheduler(
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderMillis, rPI)
             }
         } catch (e: Exception) {
-            Log.e("ShiftAlarmScheduler", "Ошибка установки пред-напоминания", e)
+            Timber.e(e, "Ошибка установки пред-напоминания")
         }
     }
 
@@ -203,15 +219,20 @@ class ShiftAlarmScheduler(
      * день (начиная с завтра), в который выпадает эта смена.
      */
     fun rescheduleShiftReminder(type: ShiftType, brigade: Int, index: Int, timeStr: String) {
+        val scheduleType = settingsManager.getScheduleType()
         val lead = settingsManager.getShiftReminderMinutes()
         if (lead <= 0) return
         var targetDate = LocalDate.now().plusDays(1)
         var attempts = 0
-        while (ShiftSchedule.shiftFor(targetDate, brigade) != type &&
-            attempts < ShiftSchedule.cycleSizeFor()
+        while (ShiftSchedule.shiftFor(targetDate, brigade, scheduleType) != type &&
+            attempts < ShiftSchedule.cycleSizeFor(scheduleType)
         ) {
             targetDate = targetDate.plusDays(1)
             attempts++
+        }
+        if (ShiftSchedule.shiftFor(targetDate, brigade, scheduleType) != type) {
+            Timber.w("Тип смены ${type.name} не найден при перепланировании reminder")
+            return
         }
         scheduleReminderAt(type, brigade, index, timeStr, targetDate, lead)
     }
@@ -253,8 +274,8 @@ class ShiftAlarmScheduler(
     }
 
     fun cancelAllShiftAlarmsAcrossAllBrigades() {
-        val maxBrigade = ShiftSchedule.currentScheduleType.brigadeCount
-        for (b in 1..maxBrigade) {
+        // Единый диапазон бригад активного графика (п.6.7).
+        for (b in settingsManager.getScheduleType().brigadeRange()) {
             ShiftType.entries.forEach { type ->
                 cancelAlarmsForShiftQuiet(type, b)
             }

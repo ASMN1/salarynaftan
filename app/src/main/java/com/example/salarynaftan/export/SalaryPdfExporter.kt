@@ -18,14 +18,14 @@ object SalaryPdfExporter {
     private const val PAGE_H = ExportStyle.PDF_PAGE_H
     private const val MARGIN = ExportStyle.PDF_MARGIN
 
-    fun createPdf(
+    suspend fun createPdf(
         context: Context,
         monthName: String,
         state: SalaryUiState,
         result: CalculationResultWithError,
-        stazhPercent: Int = 25,
-        premiumPercent: Int = 45,
-        pensionPercent: Int = 6
+        stazhPercent: Int,
+        premiumPercent: Int,
+        pensionPercent: Int
     ): File {
         val document = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W.toInt(), PAGE_H.toInt(), 1).create()
@@ -38,7 +38,11 @@ object SalaryPdfExporter {
         val dir = File(context.cacheDir, "exports")
         dir.mkdirs()
         val file = File(dir, "Расчёт_зарплаты_${monthName.replace(" ", "_")}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
+        // Запись с повторами: разовый сбой файловой системы (занятый файл,
+        // медленный кэш) не должен ронять экспорт (п.6.1).
+        ExportRetry.withRetry(operationName = "PDF расчёта зарплаты") {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        }
         document.close()
 
         return file
@@ -216,7 +220,7 @@ object SalaryPdfExporter {
         val inputs = listOf(
             "Норма часов" to "${parseNonNegative(state.normHours).toInt()} ч",
             "Ночные часы" to "${result.nightHours.toInt()} ч",
-            "Праздн. часы" to "${parseNonNegative(state.prazdnHours).toInt()} ч",
+            "Праздн. часы" to "${result.prazdn.toInt()} ч",
             "Детей (вычет)" to "${parseNonNegative(state.childrenCountInput).toInt()}",
         )
 

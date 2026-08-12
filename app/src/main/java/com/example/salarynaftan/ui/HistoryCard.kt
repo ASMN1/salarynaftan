@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // ===== КАРТОЧКА ИСТОРИИ РАСЧЁТОВ =====
 
@@ -57,13 +58,16 @@ fun HistoryCard(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             PremiumIconButton(
                                 onClick = {
-                                    scope.launch(Dispatchers.IO) {
-                                        val ok = try {
-                                            historyManager.shareCsv(context)
-                                        } catch (_: Exception) {
-                                            false
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) {
+                                            try {
+                                                historyManager.shareCsv(context)
+                                            } catch (_: Exception) {
+                                                false
+                                            }
                                         }
                                         // Уведомляем пользователя об ошибке экспорта вместо тихого игнора (п.6.2)
+                                        // showError — Compose-состояние, менять только на Main (п.1.5).
                                         if (!ok) showError = true
                                     }
                                 },

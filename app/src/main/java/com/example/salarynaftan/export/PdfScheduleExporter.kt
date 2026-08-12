@@ -2,6 +2,7 @@ package com.example.salarynaftan.export
 
 import com.example.salarynaftan.ShiftSchedule
 import com.example.salarynaftan.ShiftType
+import com.example.salarynaftan.ScheduleType
 
 import android.content.Context
 import android.graphics.Canvas
@@ -28,7 +29,7 @@ object SchedulePdfExporter {
     // открытую страницу PDF. createMonthPdf() и createYearPdf() используют
     // одну и ту же функцию, так что год отличается от месяца только числом
     // страниц, а не содержимым.
-    private fun drawMonthPage(canvas: Canvas, brigade: Int, month: YearMonth) {
+    private fun drawMonthPage(canvas: Canvas, brigade: Int, month: YearMonth, scheduleType: ScheduleType) {
         val contentW = PAGE_W - MARGIN * 2
         canvas.drawColor(ExportStyle.PAPER)
 
@@ -87,7 +88,7 @@ object SchedulePdfExporter {
             val x1 = x0 + cellW - gap
             val y1 = y0 + cellH - gap
 
-            val shift = ShiftSchedule.shiftFor(date, brigade)
+            val shift = ShiftSchedule.shiftFor(date, brigade, scheduleType)
 
             paint.style = Paint.Style.FILL
             paint.color = shift.color.toArgb()
@@ -120,7 +121,7 @@ object SchedulePdfExporter {
         val gridBottom = gridStartY + rows * cellH
 
         // Длительность смены зависит от активного графика (8ч у №1, 12ч у №2).
-        val shiftHours = ShiftSchedule.currentScheduleType.shiftHours
+        val shiftHours = scheduleType.shiftHours
 
         // --- Легенда ---
         paint.typeface = regular
@@ -162,16 +163,17 @@ object SchedulePdfExporter {
         canvas.drawText("Сформировано в приложении salarynaftan", MARGIN, PAGE_H - 22f, paint)
     }
 
-    fun createMonthPdf(
+    suspend fun createMonthPdf(
         context: Context,
         brigade: Int,
-        month: YearMonth
+        month: YearMonth,
+        scheduleType: ScheduleType
     ): File {
         val document = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W.toInt(), PAGE_H.toInt(), 1).create()
         val page = document.startPage(pageInfo)
 
-        drawMonthPage(page.canvas, brigade, month)
+        drawMonthPage(page.canvas, brigade, month, scheduleType)
 
         document.finishPage(page)
 
@@ -186,10 +188,11 @@ object SchedulePdfExporter {
         return file
     }
 
-    fun createYearPdf(
+    suspend fun createYearPdf(
         context: Context,
         brigade: Int,
-        year: Int
+        year: Int,
+        scheduleType: ScheduleType
     ): File {
         val document = PdfDocument()
 
@@ -198,7 +201,7 @@ object SchedulePdfExporter {
             val pageInfo = PdfDocument.PageInfo.Builder(PAGE_W.toInt(), PAGE_H.toInt(), monthNumber).create()
             val page = document.startPage(pageInfo)
 
-            drawMonthPage(page.canvas, brigade, month)
+            drawMonthPage(page.canvas, brigade, month, scheduleType)
 
             document.finishPage(page)
         }

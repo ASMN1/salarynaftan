@@ -8,18 +8,21 @@ import android.media.AudioManager
 import android.os.Build
 import timber.log.Timber
 import java.time.LocalDate
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import com.example.salarynaftan.di.AppDependencies
+
 private const val TAG = "SilentModeReceiver"
+
 class SilentModeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
         val appContext = context.applicationContext
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                handleReceive(appContext, intent)
+                withTimeout(15_000L) { handleReceive(appContext, intent) }
             } finally {
                 pendingResult.finish()
             }
@@ -40,21 +43,25 @@ class SilentModeReceiver : BroadcastReceiver() {
         }
 
         // 1. Автоматический перезапуск таймеров на следующий день
+        // Настройки авто-тишины перенесены в DataStore (п.6.8), prefs остаётся
+        // только для временного состояния (сохранённый interruption filter).
+        val settings = AppDependencies.settingsManager
+        val scheduleType = settings.getScheduleType()
         if (action == PreferenceKeys.ACTION_SILENT_ON || action == PreferenceKeys.ACTION_SILENT_OFF) {
-            val isEnabled = prefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)
-            val startTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
-            val endTime = prefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
+            val isEnabled = settings.getAutoSilenceEnabled()
+            val startTime = settings.getAutoSilenceStart()
+            val endTime = settings.getAutoSilenceEnd()
             if (isEnabled) {
-                AlarmScheduler(context).updateAutoSilenceAlarms(true, startTime, endTime)
+                AppDependencies.alarmScheduler.updateAutoSilenceAlarms(true, startTime, endTime)
             }
         }
 
         // 2. Умная проверка: является ли сегодняшний день ОТСЫПНЫМ для текущей бригады
-        val currentBrigade = SettingsManager(context).getBrigade()
+        val currentBrigade = settings.getBrigade()
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
-        val isOtsypnoy = ShiftSchedule.shiftFor(today, currentBrigade) == ShiftType.OFF &&
-                ShiftSchedule.shiftFor(yesterday, currentBrigade) == ShiftType.NIGHT
+        val isOtsypnoy = ShiftSchedule.shiftFor(today, currentBrigade, scheduleType) == ShiftType.OFF &&
+                ShiftSchedule.shiftFor(yesterday, currentBrigade, scheduleType) == ShiftType.NIGHT
 
         try {
             if (action == PreferenceKeys.ACTION_SILENT_ON) {
@@ -80,7 +87,7 @@ class SilentModeReceiver : BroadcastReceiver() {
                     }
                 } else if (isOtsypnoy && !hasDndPermission) {
                     // Отсыпной день есть, но нет разрешения «Не беспокоить» —
-                    // молча ничего не делать нельзя: пользователь должен понять, почему тишина не сработала.
+                    // молча ничего делать нельзя: пользователь должен понять, почему тишина не сработала.
                     Timber.w("Авто-тишина не сработала: нет разрешения DND (отсыпной день после ночной смены)")
                     try {
                         val notif = Notifications.info(
@@ -117,6 +124,11 @@ class SilentModeReceiver : BroadcastReceiver() {
             }
         } catch (e: SecurityException) {
             Timber.e(e, "Ошибка доступа при авто-тишине")
+        } catch (e: Exception) {
+            // Обработка прочих ошибок (п.6.2): например, setInterruptionFilter
+            // может бросить IllegalStateException на некоторых OEM, если
+            // NotificationManager в невалидном состоянии. Не роняем receiver.
+            Timber.e(e, "Неожиданная ошибка в авто-тишине")
         }
     }
 }

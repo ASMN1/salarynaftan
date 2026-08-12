@@ -95,7 +95,6 @@ data class SalaryUiState(
     val selectedMonthIndex: Int = LocalDate.now().monthValue - 1,
     val selectedYear: Int = LocalDate.now().year,
     val normHours: String = "",
-    val prazdnHours: String = "0",
     val zaOtsutstvuushego: String = "",
     val kvartalka: String = "",
     val gazetaInput: String = "0",
@@ -137,8 +136,8 @@ data class CalculationResultWithError(
 )
 
 fun parseNonNegative(input: String): Double =
-    input.replace(',', '.').replace(' ', '.')
-        .toDoubleOrNull()?.takeIf { it >= 0 } ?: 0.0
+    input.replace(',', '.').replace(" ", "") // «1 000» -> «1000», а не «1.000»
+        .toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 } ?: 0.0
 
 /**
  * Адаптер из UI-состояния в входные данные расчёта. Размещён рядом с
@@ -147,7 +146,6 @@ fun parseNonNegative(input: String): Double =
  */
 fun monthInputFrom(state: SalaryUiState): SalaryCalculator.MonthInput = SalaryCalculator.MonthInput(
     normHours = parseNonNegative(state.normHours),
-    prazdnHours = parseNonNegative(state.prazdnHours),
     zaOtsutstvuushego = parseNonNegative(state.zaOtsutstvuushego),
     kvartalka = parseNonNegative(state.kvartalka),
     gazetaInput = parseNonNegative(state.gazetaInput),
@@ -161,8 +159,13 @@ fun monthInputFrom(state: SalaryUiState): SalaryCalculator.MonthInput = SalaryCa
 fun parseMissedDays(input: String): Set<Int> =
     input.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }.toSet()
 
+fun parseMissedDays(input: String, year: Int, monthIndex: Int): Set<Int> {
+    val maxDay = java.time.YearMonth.of(year, monthIndex + 1).lengthOfMonth()
+    return parseMissedDays(input).filter { it in 1..maxDay }.toSet()
+}
+
 fun displayInt(input: String): String =
-    input.replace(',', '.').replace(' ', '.')
+    input.replace(',', '.').replace(" ", "")
         .toDoubleOrNull()?.toInt()?.toString() ?: input
 
 /** Форматирует коэффициент (0..1) как целые проценты для ввода в поле. */
@@ -179,7 +182,7 @@ fun percentInput(coef: Double): String =
 object MoneyFormatter {
     /** Округляет сумму до копеек (2 знака) по правилу HALF_UP. */
     fun round(value: Double): Double =
-        BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toDouble()
+        if (value.isFinite()) BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toDouble() else 0.0
 
     /** Форматирует сумму как «1234.56». Всегда 2 знака, без валюты. */
     fun format(value: Double): String =

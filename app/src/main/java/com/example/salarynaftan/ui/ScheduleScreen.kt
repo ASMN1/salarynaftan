@@ -3,6 +3,7 @@ import com.example.salarynaftan.*
 
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -25,14 +25,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,9 +48,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.salarynaftan.R
-import com.example.salarynaftan.data.SalaryRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -57,81 +63,40 @@ import java.time.YearMonth
 fun ScheduleScreen(
     isDarkTheme: Boolean,
     onThemeChange: (Boolean) -> Unit,
-    primaryColor: Color
+    primaryColor: Color,
+    permissionManager: PermissionManager
 ) {
     val context = LocalContext.current
     val today = remember { LocalDate.now() }
-    var visibleMonth by remember { mutableStateOf(YearMonth.from(today)) }
+    val scheduleViewModel = koinViewModel<ScheduleViewModel>()
+    val scheduleState by scheduleViewModel.state.collectAsState()
+    val visibleMonth = scheduleState.visibleMonth
 
     // ===== ИСПОЛЬЗУЕМ KOIN ДЛЯ ПОЛУЧЕНИЯ ЗАВИСИМОСТЕЙ =====
     val settingsManager = koinInject<SettingsManager>()
     val scheduler = koinInject<AlarmScheduler>()
     val colorSettings = koinInject<ColorSettingsManager>()
-    val salaryRepository = koinInject<SalaryRepository>()
     val coroutineScope = rememberCoroutineScope()
 
-    // Активная бригада из настроек
-    val activeBrigade = settingsManager.getBrigade()
-
-    // Активный тип графика (№1/№2)
-    val activeScheduleType = settingsManager.getScheduleType()
-
-    // Бригада для просмотра (локальная)
-    var viewingBrigade by remember { mutableStateOf(activeBrigade) }
-
-    // Тип графика для просмотра (локальный)
-    var viewingScheduleType by remember { mutableStateOf(activeScheduleType) }
+    val viewingBrigade = scheduleState.viewingBrigade
+    val viewingScheduleType = scheduleState.viewingScheduleType
 
     // Смена графика: переключаем доменный активный график, чтобы весь экран
     // (календарь, бригады, сегодня, итоги, экспорт) считал расписание заново.
-    fun switchScheduleType(type: ScheduleType) {
-        if (viewingScheduleType == type) return
-        settingsManager.setScheduleType(type)
-        viewingScheduleType = type
-        // Бригада могла быть скорректирована под новый график (например, 5→1).
-        viewingBrigade = settingsManager.getBrigade()
-        // Пересчитываем сменные будильники под новый график (другие бригады, цикл).
-        try {
-            scheduler.rescheduleAllAlarmsForBrigade(viewingBrigade)
-        } catch (_: Exception) {
-            // Невалидные настройки будильников не должны ронять экран графика.
-        }
-    }
-
-    // Пропущенные дни по месяцам: ключ = "год-месяц", значение = Set<Int>
-    var missedDaysMap by remember { mutableStateOf<Map<String, Set<Int>>>(emptyMap()) }
-
-    // Отпускные дни по месяцам: ключ = "год-месяц", значение = Set<Int>
-    var vacationDaysMap by remember { mutableStateOf<Map<String, Set<Int>>>(emptyMap()) }
+    fun switchScheduleType(type: ScheduleType) = scheduleViewModel.switchScheduleType(type)
 
     fun loadMissedDays(month: YearMonth): Set<Int> {
         val key = "${month.year}-${month.monthValue}"
-        return missedDaysMap[key] ?: emptySet()
+        return scheduleState.missedDays[key] ?: emptySet()
     }
 
     fun loadVacationDays(month: YearMonth): Set<Int> {
         val key = "${month.year}-${month.monthValue}"
-        return vacationDaysMap[key] ?: emptySet()
-    }
-
-    // Загружаем пропуски и отпуска из Room для текущего месяца при первом рендере
-    LaunchedEffect(visibleMonth) {
-        val monthIndex = visibleMonth.monthValue - 1
-        val key = "${visibleMonth.year}-${visibleMonth.monthValue}"
-        val days = salaryRepository.getMissedDays(visibleMonth.year, monthIndex)
-        missedDaysMap = missedDaysMap + (key to days)
-        val vac = salaryRepository.getVacationDays(visibleMonth.year, monthIndex)
-        vacationDaysMap = vacationDaysMap + (key to vac)
+        return scheduleState.vacationDays[key] ?: emptySet()
     }
 
     fun toggleMissedDay(day: Int, month: YearMonth) {
-        val key = "${month.year}-${month.monthValue}"
-        val current = loadMissedDays(month).toMutableSet()
-        if (day in current) current.remove(day) else current.add(day)
-        missedDaysMap = missedDaysMap + (key to current)
-        coroutineScope.launch {
-            salaryRepository.saveMissedDays(month.year, month.monthValue - 1, current)
-        }
+        scheduleViewModel.toggleMissedDay(day, month)
     }
 
     // ===== Отпуск: отдельное окно с датами «от» и «до» =====
@@ -140,25 +105,7 @@ fun ScheduleScreen(
     var vacationTo by remember { mutableStateOf(today) }
 
     fun applyVacation(remove: Boolean) {
-        val begin = if (vacationFrom.isBefore(vacationTo)) vacationFrom else vacationTo
-        val finish = if (vacationFrom.isBefore(vacationTo)) vacationTo else vacationFrom
-        val toProcess = mutableMapOf<String, MutableSet<Int>>()
-        var d = begin
-        while (!d.isAfter(finish)) {
-            val key = "${d.year}-${d.monthValue}"
-            toProcess.getOrPut(key) { mutableSetOf() }.add(d.dayOfMonth)
-            d = d.plusDays(1)
-        }
-        toProcess.forEach { (key, days) ->
-            val y = key.substringBefore("-").toInt()
-            val m = key.substringAfter("-").toInt()
-            coroutineScope.launch {
-                val current = salaryRepository.getVacationDays(y, m - 1).toMutableSet()
-                if (remove) current.removeAll(days) else current.addAll(days)
-                salaryRepository.saveVacationDays(y, m - 1, current)
-                vacationDaysMap = vacationDaysMap + (key to current)
-            }
-        }
+        scheduleViewModel.applyVacation(vacationFrom, vacationTo, remove)
         showVacationDialog = false
     }
 
@@ -168,6 +115,15 @@ fun ScheduleScreen(
     var dayColor by remember { mutableStateOf(colorSettings.getDayColor()) }
     var nightColor by remember { mutableStateOf(colorSettings.getNightColor()) }
     var offColor by remember { mutableStateOf(colorSettings.getOffColor()) }
+
+    // Material You: при переключении темы или динамических цветов
+    // перечитываем актуальные цвета смен из DataStore (п.2.5).
+    LaunchedEffect(isDarkTheme) {
+        morningColor = colorSettings.getMorningColor()
+        dayColor = colorSettings.getDayColor()
+        nightColor = colorSettings.getNightColor()
+        offColor = colorSettings.getOffColor()
+    }
 
     var showExportDialog by remember { mutableStateOf(false) }
 
@@ -230,13 +186,14 @@ fun ScheduleScreen(
             }
         }
 
-        // Блок текущей смены «Сегодня» с обратным отсчётом (№9 из UI/UX)
-        // Переключатель графика (№1/№2) — прямо над блоком «Сегодня».
+        // Объединённая карточка: переключатель графика (№1/№2) + бригада
+        // в одном PremiumSectionCard для компактности.
         PremiumSectionCard {
             Column {
-                PremiumSectionTitle(icon = "🗓️", title = "График смен", subtitle = viewingScheduleType.displayName)
+                PremiumSectionTitle(icon = "🗓️", title = "График смен", subtitle = "Бригада $viewingBrigade · ${viewingScheduleType.displayName}")
                 PremiumDivider()
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+                // График №1/№2
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(horizontal = 18.dp)
@@ -261,21 +218,41 @@ fun ScheduleScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
+                PremiumDivider()
+                Spacer(modifier = Modifier.height(6.dp))
+                // Бригады
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                ) {
+                    (1..viewingScheduleType.brigadeCount).forEach { num ->
+                        val selected = viewingBrigade == num
+                        Surface(
+                            onClick = { scheduleViewModel.setViewingBrigade(num) },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selected) primaryColor else MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+                            contentColor = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                num.toString(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
             }
         }
 
+        // Блок сегодняшней смены — компактный
         TodayShiftCard(
             brigade = viewingBrigade,
             primaryColor = primaryColor,
             scheduleType = viewingScheduleType
-        )
-
-        // Выбор бригады для просмотра
-        BrigadeSelector(
-            selectedBrigade = viewingBrigade,
-            onBrigadeSelected = { viewingBrigade = it },
-            primaryColor = primaryColor,
-            brigadeCount = viewingScheduleType.brigadeCount
         )
 
         // Календарь
@@ -283,8 +260,8 @@ fun ScheduleScreen(
             visibleMonth = visibleMonth,
             selectedBrigade = viewingBrigade,
             scheduleType = viewingScheduleType,
-            onMonthChange = { visibleMonth = it },
-            onGoToToday = { visibleMonth = YearMonth.from(today) },
+            onMonthChange = { scheduleViewModel.setVisibleMonth(it) },
+            onGoToToday = { scheduleViewModel.setVisibleMonth(YearMonth.from(today)) },
             morningColor = morningColor,
             dayColor = dayColor,
             nightColor = nightColor,
@@ -307,6 +284,47 @@ fun ScheduleScreen(
         ) {
             Text("☀ Отпуск", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
+
+        // Синхронизация графика смен с системным календарём (п.3.1).
+        fun syncWithCalendar(add: Boolean) {
+            if (!permissionManager.hasCalendarPermission()) {
+                permissionManager.requestCalendarPermission()
+                return
+            }
+            coroutineScope.launch {
+                val count = withContext(Dispatchers.IO) {
+                    try {
+                        if (add) {
+                            when (val result = CalendarSyncCoordinator.syncMonth(
+                                context, visibleMonth, viewingBrigade, viewingScheduleType
+                            )) {
+                                is CalendarSyncResult.Success -> result.added
+                                CalendarSyncResult.Failed -> -1
+                            }
+                        } else {
+                            CalendarSyncManager.removeMonthFromCalendar(
+                                context, visibleMonth, viewingBrigade
+                            )
+                        }
+                    } catch (_: Exception) {
+                        -1
+                    }
+                }
+                val msg = if (add) {
+                    if (count >= 0) "Добавлено событий в календарь: $count"
+                    else "Календарь недоступен"
+                } else {
+                    if (count > 0) "Удалено событий из календаря: $count"
+                    else "Событий в календаре не найдено"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+        CalendarSyncButtons(
+            primaryColor = primaryColor,
+            onAdd = { syncWithCalendar(add = true) },
+            onRemove = { syncWithCalendar(add = false) }
+        )
 
         // Итоги месяца
         MonthlyStatsCard(
@@ -338,60 +356,20 @@ fun ScheduleScreen(
         ScheduleExportDialog(
             month = visibleMonth,
             brigade = viewingBrigade,
+            scheduleType = viewingScheduleType,
             onDismiss = { showExportDialog = false }
         )
     }
 
     if (showVacationDialog) {
-        AlertDialog(
-            onDismissRequest = { showVacationDialog = false },
-            title = { Text("Отпуск", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Выберите даты отпуска (от и до).", fontSize = 13.sp)
-                    OutlinedButton(
-                        onClick = {
-                            android.app.DatePickerDialog(
-                                context,
-                                { _, y, m, d -> vacationFrom = LocalDate.of(y, m + 1, d) },
-                                vacationFrom.year, vacationFrom.monthValue - 1, vacationFrom.dayOfMonth
-                            ).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("От: ${vacationFrom.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", fontWeight = FontWeight.Bold)
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            android.app.DatePickerDialog(
-                                context,
-                                { _, y, m, d -> vacationTo = LocalDate.of(y, m + 1, d) },
-                                vacationTo.year, vacationTo.monthValue - 1, vacationTo.dayOfMonth
-                            ).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text("До: ${vacationTo.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))}", fontWeight = FontWeight.Bold)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { applyVacation(false) }) {
-                    Text("Отметить", color = DesignTokens.Success, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { applyVacation(true) }) {
-                        Text("Снять", color = DesignTokens.Danger, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = { showVacationDialog = false }) {
-                        Text("Отмена", color = Color.Gray)
-                    }
-                }
-            }
+        VacationDialog(
+            from = vacationFrom,
+            to = vacationTo,
+            onFromChange = { vacationFrom = it },
+            onToChange = { vacationTo = it },
+            onApply = { applyVacation(false) },
+            onRemove = { applyVacation(true) },
+            onDismiss = { showVacationDialog = false }
         )
     }
 }

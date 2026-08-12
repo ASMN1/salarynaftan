@@ -55,7 +55,10 @@ enum class ShiftType(
      * Момент окончания смены, назначенной на [date]. DAY (16:00–00:00) пересекает
      * полночь и заканчивается на следующий день в 00:00; NIGHT/MORNING — в тот же день.
      * Для OFF возвращает null.
+     *
+     * @deprecated Используйте [ShiftSchedule.shiftEndDateTime] для учёта типа графика.
      */
+    @Deprecated("Use ShiftSchedule.shiftEndDateTime() for schedule-aware calculation")
     fun endDateTime(date: java.time.LocalDate): java.time.LocalDateTime? {
         val s = startTime ?: return null
         val e = endTime ?: return null

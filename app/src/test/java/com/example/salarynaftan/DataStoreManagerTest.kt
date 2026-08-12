@@ -41,13 +41,16 @@ class DataStoreManagerTest {
         // Robolectric переиспользует одну файловую систему в рамках JVM —
         // очищаем файл DataStore, чтобы каждый тест начинал с «чистых» дефолтов.
         DataStoreManagerTest.clearDataStore(context)
-        manager = DataStoreManager(context)
+        // Сбрасываем кэш инстансов: Robolectric переиспользует один Application
+        // между тестами, иначе getInstance вернёт инстанс с кэшем прошлого теста (п.3.4).
+        DataStoreManager.clearInstances()
+        manager = DataStoreManager.getInstance(context)
     }
 
     @After
     fun tearDown() {
-        // Новый менеджер в каждом тесте изолирован; контекст Robolectric
-        // пересоздаётся между тестами.
+        // Сбрасываем кэш инстансов, чтобы следующий тест начал с чистого состояния.
+        DataStoreManager.clearInstances()
     }
 
     companion object {
@@ -126,6 +129,36 @@ class DataStoreManagerTest {
         assertFalse(manager.isDarkTheme())
         manager.saveUseDynamicColors(true)
         assertTrue(manager.getUseDynamicColors())
+    }
+
+    @Test
+    fun `settings flows emit updated theme colors oled brigade and schedule`() = runBlocking {
+        // Предыдущие тесты могут ещё дописывать DataStore асинхронно; задаём
+        // исходный контракт через API, а не полагаемся на очистку файла.
+        manager.saveTheme(true)
+        manager.saveUseDynamicColors(false)
+        manager.saveUseOled(false)
+        manager.setBrigade(1)
+        manager.saveScheduleType(ScheduleType.GRAPH_1)
+        val settings = SettingsManager(context)
+
+        assertTrue(settings.isDarkThemeFlow.value)
+        assertFalse(settings.useDynamicColorsFlow.value)
+        assertFalse(settings.useOledFlow.value)
+        assertEquals(1, settings.brigadeFlow.value)
+        assertEquals(ScheduleType.GRAPH_1, settings.scheduleTypeFlow.value)
+
+        settings.saveTheme(false)
+        settings.saveUseDynamicColors(true)
+        settings.saveUseOled(true)
+        settings.setBrigade(3)
+        settings.setScheduleType(ScheduleType.GRAPH_2)
+
+        assertFalse(settings.isDarkThemeFlow.value)
+        assertTrue(settings.useDynamicColorsFlow.value)
+        assertTrue(settings.useOledFlow.value)
+        assertEquals(3, settings.brigadeFlow.value)
+        assertEquals(ScheduleType.GRAPH_2, settings.scheduleTypeFlow.value)
     }
 
     // ===== Граничные значения (clamping) =====
@@ -212,6 +245,8 @@ class DataStoreManagerTest {
         waitForDiskWrite()
 
         // Новый менеджер того же контекста читает уже записанное значение.
+        // Прямой конструктор (internal) — изолированный инстанс с чистым кэшем,
+        // чтобы проверить реальную запись на диск, а не кэш getInstance (п.3.4).
         val fresh = DataStoreManager(context)
         assertEquals(12345.67, fresh.getSalary(), 0.0001)
         assertEquals(20, fresh.getVolumeRampSec())

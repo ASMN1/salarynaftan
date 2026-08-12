@@ -15,9 +15,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -33,11 +35,17 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
  * UI-поток и выполняются строго в порядке вызовов — без потери финальной
  * записи при быстрых последовательных сохранениях.
  */
-class DataStoreManager(context: Context) {
+// internal: прод-код использует getInstance (единый кэш/scope), а тесты
+// могут создавать изолированные инстансы для проверки персистентности (п.3.4).
+class DataStoreManager internal constructor(context: Context) {
 
     private val store = context.settingsDataStore
+    private val appContext = context.applicationContext
+    private val processCache = persistedCaches.getOrPut(appContext) { java.util.concurrent.ConcurrentHashMap() }
 
     private val writeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
     // Ключи, уже загруженные из DataStore (защищают от повторного блокирующего чтения).
     private val loadedKeys = mutableSetOf<Preferences.Key<*>>()
@@ -45,7 +53,28 @@ class DataStoreManager(context: Context) {
     // In-memory кэш: ключ → значение. Заменяет десятки @Volatile-полей.
     private val cache = mutableMapOf<Preferences.Key<*>, Any>()
 
+    // Миграция выполняется ровно один раз за жизнь инстанса. Раньше
+    // upgradeIfNeeded() вызывался при каждом load() и каждый раз делал
+    // блокирующее чтение версии с диска — лишний runBlocking на каждый ключ (п.1.1).
+    private var migrationDone = false
+
     companion object {
+        // Единый инстанс на Context: SettingsManager и ColorSettingsManager
+        // создают свои DataStoreManager, но должны разделять ОДИН кэш и
+        // writeScope, иначе возникает гонка данных между двумя кэшами (п.3.4).
+        private val instances = java.util.concurrent.ConcurrentHashMap<Context, DataStoreManager>()
+        private val persistedCaches = java.util.concurrent.ConcurrentHashMap<Context, java.util.concurrent.ConcurrentHashMap<Preferences.Key<*>, Any>>()
+
+        /** Возвращает общий DataStoreManager для данного Context. */
+        fun getInstance(context: Context): DataStoreManager =
+            instances.getOrPut(context.applicationContext) { DataStoreManager(context.applicationContext) }
+
+        /** Сбрасывает кэш инстансов (используется в тестах для изоляции). */
+        fun clearInstances() {
+            instances.clear()
+            persistedCaches.clear()
+        }
+
         private val KEY_VOLUME = floatPreferencesKey("alarm_volume")
         private val KEY_RINGTONE_URI = stringPreferencesKey("alarm_ringtone_uri")
         private val KEY_IS_DARK = booleanPreferencesKey("is_dark_theme")
@@ -59,6 +88,7 @@ class DataStoreManager(context: Context) {
         private val KEY_STAZH_KOEF = floatPreferencesKey("salary_stazh_koef")
         private val KEY_SELECTED_MONTH = intPreferencesKey("selected_month_index")
         private val KEY_USE_DYNAMIC_COLORS = booleanPreferencesKey("use_dynamic_colors")
+        private val KEY_USE_OLED = booleanPreferencesKey("use_oled_mode")
         private val KEY_PPS_PERCENT = floatPreferencesKey("pps_percent")
         private val KEY_MORNING_COLOR = intPreferencesKey("morning_color")
         private val KEY_DAY_COLOR = intPreferencesKey("day_color")
@@ -68,6 +98,9 @@ class DataStoreManager(context: Context) {
         private val KEY_VOLUME_RAMP_SEC = intPreferencesKey("volume_ramp_sec")
         private val KEY_ANCHOR_DATE = stringPreferencesKey("anchor_date")
         private val KEY_SHIFT_REMINDER_MINUTES = intPreferencesKey("shift_reminder_minutes")
+        private val KEY_AUTO_SILENCE_ENABLED = booleanPreferencesKey("auto_silence_enabled")
+        private val KEY_AUTO_SILENCE_START = stringPreferencesKey("auto_silence_start")
+        private val KEY_AUTO_SILENCE_END = stringPreferencesKey("auto_silence_end")
         // Версия данных настроек: при изменении структуры ключей увеличиваем
         // SCHEMA_VERSION и добавляем соответствующий шаг миграции (№9).
         private val KEY_DATA_VERSION = intPreferencesKey("data_version")
@@ -81,7 +114,7 @@ class DataStoreManager(context: Context) {
         private val DEFAULT_BACKGROUND_COLOR_DARK = 0xFF121212.toInt()
         private val DEFAULT_SURFACE_COLOR_DARK = 0xFF1E1E1E.toInt()
         private val DEFAULT_BACKGROUND_COLOR_LIGHT = 0xFFFFFFFF.toInt()
-        private val DEFAULT_SURFACE_COLOR_LIGHT = 0xFFF5F5F5.toInt()
+        private val DEFAULT_SURFACE_COLOR_LIGHT = 0xFF5F5F5F.toInt()
         private const val DEFAULT_BRIGADE = 1
         private const val DEFAULT_STAZH_KOEF = 0.25f
         private const val DEFAULT_SELECTED_MONTH = 5
@@ -100,10 +133,19 @@ class DataStoreManager(context: Context) {
         private const val DEFAULT_SHIFT_REMINDER_MINUTES = 0
         private const val MIN_SHIFT_REMINDER_MINUTES = 0
         private const val MAX_SHIFT_REMINDER_MINUTES = 180
+        private const val DEFAULT_AUTO_SILENCE_ENABLED = false
+        private const val DEFAULT_AUTO_SILENCE_START = "08:00"
+        private const val DEFAULT_AUTO_SILENCE_END = "16:00"
 
         // Текущая версия схемы настроек. Начинаем с 2, так как первая версия
         // существовала без этого ключа; значение отсутствует → версия 1.
         const val SCHEMA_VERSION = 2
+    }
+
+    init {
+        writeScope.launch {
+            migrateAndLoad()
+        }
     }
 
     // ---- Volume ----
@@ -126,21 +168,37 @@ class DataStoreManager(context: Context) {
     fun savePrimaryColor(c: Int) = save(KEY_PRIMARY_COLOR, c)
 
     // ---- Background color ----
-    fun getBackgroundColor(): Int = load(KEY_BACKGROUND_COLOR, DEFAULT_BACKGROUND_COLOR_DARK)
+    // Дефолт зависит от текущей темы: светлая тема → светлый фон (п.2.2).
+    fun getBackgroundColor(): Int =
+        load(KEY_BACKGROUND_COLOR,
+            if (isDarkTheme()) DEFAULT_BACKGROUND_COLOR_DARK else DEFAULT_BACKGROUND_COLOR_LIGHT)
+
     fun saveBackgroundColor(c: Int) = save(KEY_BACKGROUND_COLOR, c)
 
     // ---- Surface color ----
-    fun getSurfaceColor(): Int = load(KEY_SURFACE_COLOR, DEFAULT_SURFACE_COLOR_DARK)
+    // Дефолт зависит от текущей темы: светлая тема → светлая поверхность (п.2.2).
+    fun getSurfaceColor(): Int =
+        load(KEY_SURFACE_COLOR,
+            if (isDarkTheme()) DEFAULT_SURFACE_COLOR_DARK else DEFAULT_SURFACE_COLOR_LIGHT)
+
     fun saveSurfaceColor(c: Int) = save(KEY_SURFACE_COLOR, c)
 
     // ---- Brigade ----
     /**
      * Текущая бригада. Диапазон допустимых номеров зависит от выбранного
-     * графика (ScheduleType.brigadeCount), поэтому значение не коэрсится до
-     * 1..5 жёстко — иначе при переключении на График №2 бригада 5 не сохранилась бы.
+     * графика (ScheduleType.brigadeCount), поэтому значение коэрсится в
+     * диапазон АКТИВНОГО графика (а не жёстко 1..5). Это предотвращает
+     * require(...) в ShiftSchedule.shiftFor*, когда бригада выходит за
+     * пределы активного (например, 4-бригадного Графика №2).
      */
-    fun getBrigade(): Int = load(KEY_BRIGADE, DEFAULT_BRIGADE) { it.coerceIn(1, ScheduleType.GRAPH_1.brigadeCount) }
-    fun setBrigade(b: Int) = save(KEY_BRIGADE, b) { it.coerceIn(1, ScheduleType.GRAPH_1.brigadeCount) }
+    fun getBrigade(): Int {
+        val max = getScheduleType().brigadeCount
+        return load(KEY_BRIGADE, DEFAULT_BRIGADE) { it.coerceIn(1, max) }
+    }
+    fun setBrigade(b: Int) {
+        val max = getScheduleType().brigadeCount
+        save(KEY_BRIGADE, b) { it.coerceIn(1, max) }
+    }
 
     // ---- Schedule type (График №1 / №2) ----
     fun getScheduleType(): ScheduleType = ScheduleType.fromStorageName(load(KEY_SCHEDULE_TYPE, ScheduleType.GRAPH_1.storageName))
@@ -167,6 +225,10 @@ class DataStoreManager(context: Context) {
     fun getUseDynamicColors(): Boolean = load(KEY_USE_DYNAMIC_COLORS, false)
     fun saveUseDynamicColors(use: Boolean) = save(KEY_USE_DYNAMIC_COLORS, use)
 
+    // ---- OLED-режим (чисто чёрный фон для тёмной темы) ----
+    fun getUseOled(): Boolean = load(KEY_USE_OLED, false)
+    fun saveUseOled(use: Boolean) = save(KEY_USE_OLED, use)
+
     // ---- PPS percent (отчисления в ППС, % от начислений) ----
     fun getPpsPercent(): Float = load(KEY_PPS_PERCENT, DEFAULT_PPS_PERCENT)
     fun savePpsPercent(p: Float) = save(KEY_PPS_PERCENT, p) { it.coerceIn(0f, 100f) }
@@ -190,6 +252,18 @@ class DataStoreManager(context: Context) {
     fun getShiftReminderMinutes(): Int = load(KEY_SHIFT_REMINDER_MINUTES, DEFAULT_SHIFT_REMINDER_MINUTES)
     fun saveShiftReminderMinutes(minutes: Int) =
         save(KEY_SHIFT_REMINDER_MINUTES, minutes) { it.coerceIn(MIN_SHIFT_REMINDER_MINUTES, MAX_SHIFT_REMINDER_MINUTES) }
+
+    // ---- Авто-тишина (SharedPreferences перенесена в DataStore, п.6.8) ----
+    fun getAutoSilenceEnabled(): Boolean = load(KEY_AUTO_SILENCE_ENABLED, DEFAULT_AUTO_SILENCE_ENABLED)
+    fun saveAutoSilenceEnabled(isEnabled: Boolean) = save(KEY_AUTO_SILENCE_ENABLED, isEnabled)
+
+    fun getAutoSilenceStart(): String = load(KEY_AUTO_SILENCE_START, DEFAULT_AUTO_SILENCE_START)
+    fun saveAutoSilenceStart(time: String) =
+        save(KEY_AUTO_SILENCE_START, time.ifBlank { DEFAULT_AUTO_SILENCE_START })
+
+    fun getAutoSilenceEnd(): String = load(KEY_AUTO_SILENCE_END, DEFAULT_AUTO_SILENCE_END)
+    fun saveAutoSilenceEnd(time: String) =
+        save(KEY_AUTO_SILENCE_END, time.ifBlank { DEFAULT_AUTO_SILENCE_END })
 
     // ---- Morning color ----
     fun getMorningColor(): Int = load(KEY_MORNING_COLOR, DEFAULT_MORNING_COLOR)
@@ -222,61 +296,117 @@ class DataStoreManager(context: Context) {
 
     // ---- Вспомогательные методы ----
 
+    /**
+     * Прогревает кэш всех ключей настройки. Вызывается в фоне при старте
+     * приложения (App.warmUpSettingsInBackground). После прогрева все чтения
+     * из UI/главного потока (в т.ч. из @Composable) идут из памяти и НЕ
+     * выполняют блокирующий runBlocking-читающий ключ с диска.
+     */
+    fun warmUp() {
+        getVolume()
+        getRingtoneUri()
+        isDarkTheme()
+        getPrimaryColor()
+        getBackgroundColor()
+        getSurfaceColor()
+        getBrigade()
+        getScheduleType()
+        getSalary()
+        getPremiumCoef()
+        getStazhKoef()
+        getSelectedMonthIndex()
+        getUseDynamicColors()
+        getUseOled()
+        getPpsPercent()
+        getUiScale()
+        getVolumeRampSec()
+        getAnchorDate()
+        getShiftReminderMinutes()
+        getAutoSilenceEnabled()
+        getAutoSilenceStart()
+        getAutoSilenceEnd()
+        getMorningColor()
+        getDayColor()
+        getNightColor()
+        getOffColor()
+    }
+
     // Миграция структуры настроек (№9). Вызывается один раз при первом
     // обращении к DataStoreManager. Каждый шаг добавляет/переносит данные
     // по ключу, затем поднимает data_version. Отсутствие ключа версии
     // трактуется как версия 1.
-    @Synchronized
-    fun upgradeIfNeeded() {
-        val current = runBlocking(Dispatchers.IO) {
-            store.data.map { it[KEY_DATA_VERSION] ?: 1 }.first()
-        }
-        if (current >= SCHEMA_VERSION) return
+    private suspend fun migrateAndLoad() {
+        val current = store.data.map { it[KEY_DATA_VERSION] ?: 1 }.first()
         // Шаг 1 -> 2: оклад теперь хранится строкой (salary_oklad_double),
         // а раньше был float под ключом salary_oklad. Если есть старое
         // float-значение, а нового строкового ещё нет — переносим.
         if (current < 2) {
-            writeScope.launch {
-                store.edit { prefs ->
-                    val hasNew = prefs[KEY_SALARY] != null
-                    if (!hasNew) {
-                        val old = prefs[floatPreferencesKey("salary_oklad")]
-                        if (old != null) {
-                            prefs[KEY_SALARY] = old.toString()
-                        }
+            store.edit { prefs ->
+                val hasNew = prefs[KEY_SALARY] != null
+                if (!hasNew) {
+                    val old = prefs[floatPreferencesKey("salary_oklad")]
+                    if (old != null) {
+                        prefs[KEY_SALARY] = old.toString()
                     }
-                    prefs[KEY_DATA_VERSION] = 2
                 }
+                prefs[KEY_DATA_VERSION] = 2
             }
         }
+        val snapshot = store.data.first()
+        synchronized(loadedKeys) {
+            snapshot.asMap().forEach { (key, value) ->
+                if (key !in loadedKeys) cache[key] = value
+                // A write may have completed while the initial snapshot was
+                // being collected. Never let that older snapshot overwrite a
+                // newer in-process value.
+                processCache.putIfAbsent(key, value)
+                loadedKeys.add(key)
+            }
+        }
+        migrationDone = true
+        _ready.value = true
     }
 
     /**
      * Типизированное чтение ключа: загружает значение в кэш ровно один раз
      * (блокирующий read только при первом обращении), затем возвращает его,
      * применяя необязательное ограничение (coerce).
+     *
+     * Если ключ НЕ загружен (первый доступ) и вызывается с главного потока,
+     * для чтения используется Dispatchers.IO. Если же ключ уже в кэше (в т.ч.
+     * после сохранения) — значение берётся из памяти мгновенно.
      */
     @Suppress("UNCHECKED_CAST")
     private fun <T> load(key: Preferences.Key<T>, default: T, coerce: (T) -> T = { it }): T {
-        synchronized(loadedKeys) {
+        return synchronized(loadedKeys) {
             if (key !in loadedKeys) {
-                val read = runBlocking(Dispatchers.IO) { store.data.map { it[key] ?: default }.first() }
+                // Synchronous getters are retained for compatibility, but never
+                // block the caller. The async initializer fills the cache before
+                // normal UI use; a default is safe during the very first frame.
+                val read = (processCache[key] as? T) ?: default
                 cache[key] = read as Any
                 loadedKeys.add(key)
             }
-            if (loadedKeys.isNotEmpty()) upgradeIfNeeded()
+            coerce(cache[key] as T)
         }
-        return coerce(cache[key] as T)
     }
 
     /**
      * Типизированная запись: обновляет кэш и уходит в фоновый scope
      * (не блокирует вызывающий поток). Необязательный coerce применяется
      * к значению как при сохранении, так и в кэше.
+     *
+     * Важно: ключ сразу добавляется в loadedKeys (п.1.2), чтобы последующий
+     * load возвращал свежее значение из памяти, а НЕ читал устаревшее с диска
+     * (гонка save→load), перезатирая кэш.
      */
     private fun <T> save(key: Preferences.Key<T>, value: T, coerce: (T) -> T = { it }) {
         val v = coerce(value)
-        cache[key] = v as Any
+        synchronized(loadedKeys) {
+            cache[key] = v as Any
+            processCache[key] = v as Any
+            loadedKeys.add(key)   // (п.1.2) свежее значение уже в кэше
+        }
         writeScope.launch { store.edit { it[key] = v } }
     }
 }

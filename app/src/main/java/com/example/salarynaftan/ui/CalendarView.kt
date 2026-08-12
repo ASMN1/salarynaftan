@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -69,7 +70,7 @@ import java.util.Locale
 fun MonthCalendarPager(
     visibleMonth: YearMonth,
     selectedBrigade: Int,
-    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType,
+    scheduleType: ScheduleType = ScheduleType.GRAPH_1,
     onMonthChange: (YearMonth) -> Unit,
     onGoToToday: () -> Unit,
     morningColor: Color,
@@ -123,7 +124,7 @@ fun MonthCalendarPager(
             // Кнопка: Сегодня (отпуск настраивается отдельным окном в ScheduleScreen)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
@@ -315,7 +316,7 @@ fun MonthCalendarPager(
 fun MonthGrid(
     month: YearMonth,
     brigade: Int,
-    scheduleType: ScheduleType = ShiftSchedule.currentScheduleType,
+    scheduleType: ScheduleType = ScheduleType.GRAPH_1,
     today: LocalDate,
     morningColor: Color,
     dayColor: Color,
@@ -399,9 +400,13 @@ fun MonthGrid(
                                 .padding(1.dp)
                                 .background(
                                     color = when {
+                                        // Сегодняшний день выделяется заливкой основным цветом поверх смены.
+                                        isToday -> primaryColor.copy(alpha = 0.35f)
                                         isMissed -> DesignTokens.Danger.copy(alpha = 0.7f)
                                         isVacation -> DesignTokens.Vacation.copy(alpha = 0.7f)
                                         isHoliday -> DesignTokens.Holiday.copy(alpha = 0.28f)
+                                        // Дни зарплаты/аванса заливаем жёлтым/бирюзовым — так их видно,
+                                        // а буква смены остаётся обычного размера по центру (не уходит за края).
                                         isSalary -> DesignTokens.Salary.copy(alpha = 0.25f)
                                         isAdvance -> DesignTokens.Advance.copy(alpha = 0.25f)
                                         else -> color.copy(alpha = 0.85f)
@@ -410,7 +415,7 @@ fun MonthGrid(
                                 )
                                 .border(
                                     width = when {
-                                        isToday -> 2.dp
+                                        isToday -> 2.5.dp
                                         isMissed || isVacation -> 1.5.dp
                                         isHoliday -> 1.5.dp
                                         isSalary || isAdvance -> 2.5.dp
@@ -464,7 +469,7 @@ fun MonthGrid(
                                 }
                                 // Значок праздника — поверх смены.
                                 val holidayMark = if (isHoliday) "🎉" else null
-                                // Значок зарплаты/аванса показываем поверх типа смены.
+                                // Эмодзи зарплаты/аванса — как было раньше, не мешают.
                                 val payMark = when {
                                     isSalary -> "💰"
                                     isAdvance -> "💵"
@@ -498,32 +503,42 @@ fun MonthGrid(
                                         )
                                     }
                                 }
-                                Text(
-                                    text = "$dayNumber",
-                                    fontSize = if (isToday) 10.sp else 9.sp,
-                                    fontWeight = if (isToday) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (shift == ShiftType.NIGHT) Color.White else Color.Black
-                                )
-                                // Подпись ЗП/АВ и тип смены показываются вместе
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Text(
-                                        text = shift.shortName,
-                                        fontSize = 7.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (shift == ShiftType.NIGHT) Color.White.copy(alpha = 0.7f) else Color.DarkGray
-                                    )
-                                    if (isSalary || isAdvance) {
+                                // Номер дня: у сегодняшнего — кружок с заливкой основным цветом.
+                                if (isToday) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .background(primaryColor, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
                                         Text(
-                                            text = if (isSalary) "ЗП" else "АВ",
-                                            fontSize = 6.sp,
+                                            text = "$dayNumber",
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = if (isSalary) DesignTokens.Salary else DesignTokens.Advance
+                                            color = Color.Black
                                         )
                                     }
+                                } else {
+                                    Text(
+                                        text = "$dayNumber",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (shift == ShiftType.NIGHT) Color.White else Color.Black
+                                    )
                                 }
+                                // Тип смены — по центру, обычный размер (7sp), чтобы не
+                                // переполнять ячейку и не уходить за края. На днях ЗП/АВ
+                                // буква чёрная жирная — контрастна на жёлтой/бирюзовой заливке.
+                                Text(
+                                    text = shift.shortName,
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = when {
+                                        shift == ShiftType.NIGHT -> Color.White.copy(alpha = 0.7f)
+                                        isSalary || isAdvance -> Color.Black
+                                        else -> Color.DarkGray
+                                    }
+                                )
                             }
                         }
                     } else {

@@ -1,6 +1,7 @@
 package com.example.salarynaftan.export
 
 import com.example.salarynaftan.ShiftSchedule
+import com.example.salarynaftan.ScheduleType
 import com.example.salarynaftan.ShiftType
 import com.example.salarynaftan.util.getExportDir
 import com.example.salarynaftan.util.shareFile
@@ -22,7 +23,7 @@ object ScheduleIcsExporter {
      * Каждая смена становится отдельным событием с временем начала/окончания.
      * Выходные дни не добавляются.
      */
-    fun createIcsFile(context: Context, month: YearMonth, brigade: Int): File? {
+    fun createIcsFile(context: Context, month: YearMonth, brigade: Int, scheduleType: ScheduleType): File? {
         val monthName = month.month.toString().lowercase().replaceFirstChar { it.uppercase() }
         val events = buildString {
             appendLine("BEGIN:VCALENDAR")
@@ -30,17 +31,16 @@ object ScheduleIcsExporter {
             appendLine("PRODID:-//SalaryNaftan//Calendar Export//RU")
             appendLine("CALSCALE:GREGORIAN")
             appendLine("METHOD:PUBLISH")
-            appendLine("X-WR-CALNAME:График смен $monthName ${month.year} (бригада $brigade)")
-            appendLine("X-WR-CALDESC:График смен ОАО «Нафтан» — бригада $brigade")
+            appendLine("X-WR-CALNAME:${escape("График смен $monthName ${month.year} (бригада $brigade)")}")
+            appendLine("X-WR-CALDESC:${escape("График смен ОАО «Нафтан» — бригада $brigade")}")
             appendLine("X-WR-TIMEZONE:Europe/Minsk")
 
             for (day in 1..month.lengthOfMonth()) {
                 val date = month.atDay(day)
-                val shift = ShiftSchedule.shiftFor(date, brigade)
+                val shift = ShiftSchedule.shiftFor(date, brigade, scheduleType)
                 if (shift == ShiftType.OFF) continue
 
                 // Времена смены зависят от активного графика (в №2 смены 12-часовые).
-                val scheduleType = ShiftSchedule.currentScheduleType
                 val sTime = ShiftSchedule.shiftStartTime(shift, scheduleType) ?: continue
                 val eTime = ShiftSchedule.shiftEndTime(shift, scheduleType) ?: continue
 
@@ -63,9 +63,9 @@ object ScheduleIcsExporter {
                 appendLine("BEGIN:VEVENT")
                 appendLine("DTSTART;TZID=Europe/Minsk:${dateStr}T${sh}${sm}00")
                 appendLine("DTEND;TZID=Europe/Minsk:${endDateStr}T${eh}${em}00")
-                appendLine("SUMMARY:${shift.displayName} смена (бригада $brigade)")
-                appendLine("DESCRIPTION:${shift.displayName} смена · $sTime–$eTime · Бригада $brigade · ОАО «Нафтан»")
-                appendLine("LOCATION:ОАО «Нафтан»")
+                appendLine("SUMMARY:${escape("${shift.displayName} смена (бригада $brigade)")}")
+                appendLine("DESCRIPTION:${escape("${shift.displayName} смена · $sTime–$eTime · Бригада $brigade · ОАО «Нафтан»")}")
+                appendLine("LOCATION:${escape("ОАО «Нафтан»")}")
                 appendLine("UID:$uid")
                 appendLine("DTSTAMP:${java.time.LocalDate.now().format(DATE_FORMAT)}T000000Z")
                 appendLine("TRANSP:OPAQUE")
@@ -81,9 +81,23 @@ object ScheduleIcsExporter {
         return file
     }
 
+    /** RFC 5545 TEXT escaping (backslash, comma, semicolon and line breaks). */
+    private fun escape(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+
     /** Шарит .ics файл через системный Intent. */
-    fun shareIcs(context: Context, month: YearMonth, brigade: Int): Boolean {
-        val file = createIcsFile(context, month, brigade) ?: return false
+    fun shareIcs(
+        context: Context,
+        month: YearMonth,
+        brigade: Int,
+        scheduleType: ScheduleType
+    ): Boolean {
+        val file = createIcsFile(context, month, brigade, scheduleType) ?: return false
         return shareFile(context, file, "text/calendar", "Добавить в календарь")
     }
 }

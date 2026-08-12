@@ -33,7 +33,7 @@ class ScheduleIcsExporterTest {
         val context = contextWithCacheDir()
         val month = YearMonth.of(2026, 1) // январь 2026 — включает все типы смен для бригады 1
 
-        val file = ScheduleIcsExporter.createIcsFile(context, month, 1)
+        val file = ScheduleIcsExporter.createIcsFile(context, month, 1, ScheduleType.GRAPH_1)
 
         assertNotNull(file)
         assertTrue("Файл должен существовать", file!!.exists())
@@ -49,7 +49,7 @@ class ScheduleIcsExporterTest {
         val context = contextWithCacheDir()
         // Январь 2026, бригада 1: 1-е и 2-е — выходные (OFF), 3-е — DAY
         val month = YearMonth.of(2026, 1)
-        val file = ScheduleIcsExporter.createIcsFile(context, month, 1)!!
+        val file = ScheduleIcsExporter.createIcsFile(context, month, 1, ScheduleType.GRAPH_1)!!
 
         val content = file.readText()
         // 2026-01-02 — OFF, не должно быть события этой датой
@@ -60,7 +60,7 @@ class ScheduleIcsExporterTest {
     fun `night shift ics spans to next day`() {
         val context = contextWithCacheDir()
         val month = YearMonth.of(2026, 1)
-        val file = ScheduleIcsExporter.createIcsFile(context, month, 1)!!
+        val file = ScheduleIcsExporter.createIcsFile(context, month, 1, ScheduleType.GRAPH_1)!!
 
         val content = file.readText()
         // Январь 2026: бригада 1 имеет ночные смены. Проверяем, что найдётся
@@ -74,7 +74,7 @@ class ScheduleIcsExporterTest {
     fun `ics includes correct date format`() {
         val context = contextWithCacheDir()
         val month = YearMonth.of(2026, 1)
-        val file = ScheduleIcsExporter.createIcsFile(context, month, 1)!!
+        val file = ScheduleIcsExporter.createIcsFile(context, month, 1, ScheduleType.GRAPH_1)!!
 
         val content = file.readText()
         // 2026-01-03 — день смены DAY
@@ -83,5 +83,18 @@ class ScheduleIcsExporterTest {
             "Дата смены должна быть в формате yyyyMMdd",
             content.contains("$expectedDate")
         )
+    }
+
+    @Test
+    fun `graph2 export uses twelve hour night shift`() {
+        val context = contextWithCacheDir()
+        val file = ScheduleIcsExporter.createIcsFile(
+            context, YearMonth.of(2026, 8), 4, ScheduleType.GRAPH_2
+        )
+
+        assertNotNull(file)
+        val content = file!!.readText()
+        assertTrue("График №2 должен содержать ночную смену с 20:00", content.contains("T200000"))
+        assertTrue("Ночная смена Графика №2 должна завершаться в 08:00", content.contains("T080000"))
     }
 }

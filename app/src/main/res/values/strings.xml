@@ -12,6 +12,13 @@
     <string name="settings_title">Настройки</string>
     <string name="settings_subtitle">Тема, оформление и звук</string>
 
+    <!-- Вкладки нижней навигации (п.6.5) -->
+    <string name="tab_schedule">График</string>
+    <string name="tab_salary">Зарплата</string>
+    <string name="tab_settings">Настройки</string>
+    <string name="tab_alarms">Будильники</string>
+    <string name="tab_about">О приложении</string>
+
     <!-- Диалог экспорта графика -->
     <string name="export_schedule_title">📤 Экспорт графика</string>
 

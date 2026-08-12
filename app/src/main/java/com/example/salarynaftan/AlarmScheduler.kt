@@ -21,8 +21,10 @@ import java.time.ZoneId
  * AlarmScheduler остаётся тонким фасадом с прежним публичным API, поэтому
  * все места вызова (UI, receivers, DI, тесты) продолжают работать без изменений.
  */
-class AlarmScheduler(private val context: Context) {
-    private val settingsManager = SettingsManager(context)
+class AlarmScheduler(
+    private val context: Context,
+    private val settingsManager: SettingsManager = SettingsManager(context)
+) {
     private val shiftScheduler = ShiftAlarmScheduler(context, settingsManager)
     private val regularScheduler = RegularAlarmScheduler(context)
     private val autoSilenceScheduler = AutoSilenceScheduler(context)
@@ -66,7 +68,7 @@ class AlarmScheduler(private val context: Context) {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             return true
         } catch (e: Exception) {
-            android.util.Log.e("AlarmScheduler", "Ошибка установки тестового будильника", e)
+            timber.log.Timber.e(e, "Ошибка установки тестового будильника")
             return false
         }
     }
@@ -97,6 +99,9 @@ class AlarmScheduler(private val context: Context) {
     fun rescheduleShiftAlarmAfterRing(shiftType: ShiftType, brigade: Int, index: Int, timeStr: String) =
         shiftScheduler.rescheduleShiftAlarmAfterRing(shiftType, brigade, index, timeStr)
 
+    fun rescheduleShiftReminder(shiftType: ShiftType, brigade: Int, index: Int, timeStr: String) =
+        shiftScheduler.rescheduleShiftReminder(shiftType, brigade, index, timeStr)
+
     fun rescheduleAllAlarmsForBrigade(brigade: Int) =
         shiftScheduler.rescheduleAllAlarmsForBrigade(brigade)
 
@@ -126,7 +131,7 @@ class AlarmScheduler(private val context: Context) {
             try {
                 block()
             } catch (e: Exception) {
-                android.util.Log.e("AlarmScheduler", "Ошибка восстановления будильника ($label)", e)
+                timber.log.Timber.e(e, "Ошибка восстановления будильника ($label)")
             }
         }
 
@@ -137,7 +142,8 @@ class AlarmScheduler(private val context: Context) {
 
         // Восстанавливаем будильники для ВСЕХ бригад текущего графика, у которых
         // они были включены. Ключи хранятся в формате "shift_alarm_<brigade>_<type>".
-        for (b in 1..ShiftSchedule.currentScheduleType.brigadeCount) {
+        val scheduleType = settingsManager.getScheduleType()
+        for (b in 1..scheduleType.brigadeCount) {
             ShiftType.entries.forEach { type ->
                 if (isAlarmScheduledForShift(type, b)) {
                     attempt("сменная $b/${type.name}") {
@@ -153,10 +159,10 @@ class AlarmScheduler(private val context: Context) {
                 }
             }
         }
-        val autoPrefs = context.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, Context.MODE_PRIVATE)
-        if (autoPrefs.getBoolean(PreferenceKeys.AUTO_SILENCE_ENABLED, false)) {
-            val start = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_START, "08:00") ?: "08:00"
-            val end = autoPrefs.getString(PreferenceKeys.AUTO_SILENCE_END, "16:00") ?: "16:00"
+        // Настройки авто-тишины — в DataStore (п.6.8), а не в SharedPreferences.
+        if (settingsManager.getAutoSilenceEnabled()) {
+            val start = settingsManager.getAutoSilenceStart()
+            val end = settingsManager.getAutoSilenceEnd()
             attempt("авто-тишина") {
                 autoSilenceScheduler.updateAutoSilenceAlarms(true, start, end)
             }

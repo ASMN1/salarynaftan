@@ -2,6 +2,7 @@ package com.example.salarynaftan.export
 
 import com.example.salarynaftan.ShiftSchedule
 import com.example.salarynaftan.ShiftType
+import com.example.salarynaftan.ScheduleType
 import androidx.compose.ui.graphics.toArgb
 import android.content.Context
 import android.graphics.*
@@ -15,16 +16,17 @@ import java.util.Locale
 object ScheduleImageExporter {
 
 
-    fun createMonthImage(
+    suspend fun createMonthImage(
         context: Context,
         brigade: Int,
-        month: YearMonth
+        month: YearMonth,
+        scheduleType: ScheduleType
     ): File {
         // Холст создаём в RGB_565 (2 байта на пиксель вместо 4 в ARGB_8888).
         // Фон экспорта непрозрачно-белый, альфа-канал не нужен, а это вдвое
         // снижает пиковое потребление памяти (~5 МБ вместо ~10 МБ), что
         // уменьшает риск OutOfMemoryError на слабых устройствах (п.4.2).
-        return createMonthImage(context, brigade, month, Bitmap.Config.RGB_565)
+        return createMonthImage(context, brigade, month, scheduleType, Bitmap.Config.RGB_565)
     }
 
     /**
@@ -32,10 +34,11 @@ object ScheduleImageExporter {
      * одиночного PNG (RGB_565, без антиалиасинга альфы — альфы нет) и для
      * подготовки тайлов годового экспорта.
      */
-    private fun createMonthImage(
+    private suspend fun createMonthImage(
         context: Context,
         brigade: Int,
         month: YearMonth,
+        scheduleType: ScheduleType,
         config: Bitmap.Config
     ): File {
         val width = 1400
@@ -103,7 +106,7 @@ object ScheduleImageExporter {
             val x1 = x0 + cellW - gap
             val y1 = y0 + cellH - gap
 
-            val shift = ShiftSchedule.shiftFor(date, brigade)
+            val shift = ShiftSchedule.shiftFor(date, brigade, scheduleType)
 
             paint.style = Paint.Style.FILL
             paint.color = shift.color.toArgb()
@@ -136,7 +139,7 @@ object ScheduleImageExporter {
         val gridBottom = gridStartY + rows * cellH
 
         // Длительность смены зависит от активного графика (8ч у №1, 12ч у №2).
-        val shiftHours = ShiftSchedule.currentScheduleType.shiftHours
+        val shiftHours = scheduleType.shiftHours
 
         // --- Легенда ---
         paint.typeface = regular
@@ -182,8 +185,12 @@ object ScheduleImageExporter {
         dir.mkdirs()
         val file = File(dir, "График_${brigade}_${month.monthValue}_${month.year}.png")
         try {
-            FileOutputStream(file).use {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            // Запись с повторами: разовый сбой файловой системы не должен
+            // ронять экспорт (п.6.1).
+            ExportRetry.withRetry(operationName = "PNG графика за месяц") {
+                FileOutputStream(file).use {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
             }
         } finally {
             bitmap.recycle()
@@ -195,10 +202,11 @@ object ScheduleImageExporter {
 
 
 
-    fun createYearImage(
+    suspend fun createYearImage(
         context: Context,
         brigade: Int,
-        year: Int
+        year: Int,
+        scheduleType: ScheduleType
     ): File {
 
         // Раньше тут собирался ОДИН битмап 1400×21600 в ARGB_8888 —
@@ -207,7 +215,9 @@ object ScheduleImageExporter {
         // уменьшается вдвое перед склейкой, а итоговый холст рисуется в
         // RGB_565 (2 байта на пиксель вместо 4, альфа-канал тут не нужен —
         // фон и так непрозрачно-белый). Итоговый объём — около 15 МБ.
-        val tileScale = 0.5f
+        // 0.4f вместо 0.5f: итоговый битмап 560×8640 в RGB_565 ≈ 9.7 МБ
+        // вместо ~15 МБ — дополнительная защита от OOM на слабых устройствах (п.4.1).
+        val tileScale = 0.4f
         val tileWidth = (1400 * tileScale).toInt()
         val tileHeight = (1800 * tileScale).toInt()
 
@@ -215,40 +225,49 @@ object ScheduleImageExporter {
         val height = 12 * tileHeight
 
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
-
-        var offset = 0
-
-        for (monthNumber in 1..12) {
-            val month = YearMonth.of(year, monthNumber)
-            val temp = createMonthImage(context, brigade, month)
-
-            val fullBitmap = BitmapFactory.decodeFile(temp.absolutePath)
-            if (fullBitmap != null) {
-                val scaledBitmap = Bitmap.createScaledBitmap(fullBitmap, tileWidth, tileHeight, true)
-                fullBitmap.recycle()
-                canvas.drawBitmap(scaledBitmap, 0f, offset.toFloat(), null)
-                scaledBitmap.recycle()
-            }
-
-            temp.delete()
-            offset += tileHeight
-        }
-
-        val dir2 = File(context.cacheDir, "exports")
-        dir2.mkdirs()
-        val file = File(dir2, "График_${brigade}_год_$year.png")
-
         try {
-            FileOutputStream(file).use {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+
+            var offset = 0
+            for (monthNumber in 1..12) {
+                val month = YearMonth.of(year, monthNumber)
+                val temp = createMonthImage(context, brigade, month, scheduleType)
+                try {
+                    val fullBitmap = BitmapFactory.decodeFile(temp.absolutePath)
+                    if (fullBitmap != null) {
+                        try {
+                            val scaledBitmap = Bitmap.createScaledBitmap(fullBitmap, tileWidth, tileHeight, true)
+                            try {
+                                canvas.drawBitmap(scaledBitmap, 0f, offset.toFloat(), null)
+                            } finally {
+                                scaledBitmap.recycle()
+                            }
+                        } finally {
+                            fullBitmap.recycle()
+                        }
+                    }
+                    offset += tileHeight
+                } finally {
+                    // Удаляем временный месяц и при ошибке decode/отрисовки.
+                    temp.delete()
+                }
             }
+
+            val dir2 = File(context.cacheDir, "exports")
+            dir2.mkdirs()
+            val file = File(dir2, "График_${brigade}_год_$year.png")
+            // Запись с повторами: разовый сбой файловой системы не должен
+            // ронять экспорт (п.6.1).
+            ExportRetry.withRetry(operationName = "PNG графика за год") {
+                FileOutputStream(file).use {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            }
+            return file
         } finally {
             bitmap.recycle()
         }
-
-        return file
     }
 
 

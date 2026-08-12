@@ -143,10 +143,9 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
         } catch (_: Exception) { }
     }
 
-    private var isFinishing = false
+    private val isFinishing = java.util.concurrent.atomic.AtomicBoolean(false)
     private fun stopAndFinish() {
-        if (isFinishing) return
-        isFinishing = true
+        if (!isFinishing.compareAndSet(false, true)) return
         // Останавливаем звонок в фоновом сервисе.
         AlarmSoundService.stop(this)
         finish()

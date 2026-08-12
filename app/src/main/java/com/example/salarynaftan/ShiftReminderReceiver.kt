@@ -4,11 +4,12 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
+import com.example.salarynaftan.di.AppDependencies
 
 private const val TAG = "ShiftReminderReceiver"
 private const val REMINDER_NOTIFY_BASE = 2_000_000
@@ -22,9 +23,9 @@ class ShiftReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
         val appContext = context.applicationContext
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                handleReceive(appContext, intent)
+                withTimeout(15_000L) { handleReceive(appContext, intent) }
             } catch (e: Exception) {
                 Timber.e(e, "Ошибка в ShiftReminderReceiver")
             } finally {
@@ -46,12 +47,16 @@ class ShiftReminderReceiver : BroadcastReceiver() {
         // Сначала перепланируем напоминание на следующий подходящий день,
         // затем показываем уведомление (очередность не важна, но reschedule
         // не должен прекратиться из-за ошибки с уведомлением).
-        val reminderLead = SettingsManager(context).getShiftReminderMinutes()
+        val reminderLead = AppDependencies.settingsManager.getShiftReminderMinutes()
         if (reminderLead > 0) {
             val index = intent.getIntExtra("alarm_index", 0)
             val timeStr = intent.getStringExtra("alarm_time") ?: ""
             try {
-                ShiftAlarmScheduler(context).rescheduleShiftReminder(shiftType, brigade, index, timeStr)
+                // AlarmScheduler owns the configured ShiftAlarmScheduler and
+                // therefore uses the same injected settings/cache instance.
+                AppDependencies.alarmScheduler.rescheduleShiftReminder(
+                    shiftType, brigade, index, timeStr
+                )
             } catch (e: Exception) {
                 Timber.e(e, "Не удалось перепланировать пред-напоминание")
             }
@@ -60,7 +65,7 @@ class ShiftReminderReceiver : BroadcastReceiver() {
         val time = intent.getStringExtra("alarm_time") ?: ""
         val notifyId = REMINDER_NOTIFY_BASE + brigade * 1000 + shiftType.ordinal * 100
         try {
-            val builder = Notifications.info(
+            val builder = Notifications.shiftReminder(
                 context = context,
                 title = "🔔 Скоро смена — $time",
                 text = "Напоминаем: ${shiftType.displayName} смена (бригада $brigade) начнётся в $time.",

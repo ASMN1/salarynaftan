@@ -46,24 +46,31 @@
         android:paddingBottom="3dp">
 
         <TextView
+            android:id="@+id/widget_wd_mon"
             style="@style/WidgetWeekdayCell"
             android:text="Пн" />
         <TextView
+            android:id="@+id/widget_wd_tue"
             style="@style/WidgetWeekdayCell"
             android:text="Вт" />
         <TextView
+            android:id="@+id/widget_wd_wed"
             style="@style/WidgetWeekdayCell"
             android:text="Ср" />
         <TextView
+            android:id="@+id/widget_wd_thu"
             style="@style/WidgetWeekdayCell"
             android:text="Чт" />
         <TextView
+            android:id="@+id/widget_wd_fri"
             style="@style/WidgetWeekdayCell"
             android:text="Пт" />
         <TextView
+            android:id="@+id/widget_wd_sat"
             style="@style/WidgetWeekdayCell"
             android:text="Сб" />
         <TextView
+            android:id="@+id/widget_wd_sun"
             style="@style/WidgetWeekdayCell"
             android:text="Вс" />
     </LinearLayout>

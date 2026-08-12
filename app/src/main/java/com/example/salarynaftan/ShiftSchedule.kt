@@ -17,12 +17,15 @@ object ShiftSchedule {
     var anchorDateGraph2: LocalDate = LocalDate.of(2026, 8, 8)
 
     /**
-     * Активный тип графика. Устанавливается вместе с сохранением настройки
-     * (SettingsManager.setScheduleType) и при старте приложения (App), чтобы
-     * все вызовы shiftFor без явного типа использовали выбранный график.
+     * Безопасная установка базовой даты цикла (п.3.6): null/невалидная дата
+     * отклоняется, чтобы не сломать детерминированный расчёт смен.
+     * Название намеренно не setAnchorDate, т.к. var anchorDate генерирует
+     * синтетический сеттер setAnchorDate(LocalDate), что приводит к
+     * Platform declaration clash на JVM-уровне.
      */
-    @Volatile
-    var currentScheduleType: ScheduleType = ScheduleType.GRAPH_1
+    fun updateAnchorDate(date: LocalDate?) {
+        if (date != null) anchorDate = date
+    }
 
     // ===== График №1: 5 бригад, 8 ч (цикл 10 дней) =====
 
@@ -47,7 +50,7 @@ object ShiftSchedule {
     const val SHIFT_CYCLE_SIZE: Int = 10
 
     /** Длина цикла для указанного типа графика (для детерминированного поиска дней). */
-    fun cycleSizeFor(scheduleType: ScheduleType = currentScheduleType): Int =
+    fun cycleSizeFor(scheduleType: ScheduleType = ScheduleType.GRAPH_1): Int =
         when (scheduleType) {
             ScheduleType.GRAPH_1 -> CYCLE_SIZE.toInt()
             ScheduleType.GRAPH_2 -> CYCLE2_SIZE.toInt()
@@ -98,33 +101,29 @@ object ShiftSchedule {
 
     /**
      * Смена для указанной даты и бригады активного графика.
-     * [scheduleType] — тип графика; по умолчанию активный (`currentScheduleType`).
+     * [scheduleType] — тип графика, передаваемый вызывающим кодом явно.
      */
     fun shiftFor(
         date: LocalDate,
         brigade: Int = 1,
-        scheduleType: ScheduleType = currentScheduleType
+        scheduleType: ScheduleType = ScheduleType.GRAPH_1
     ): ShiftType = when (scheduleType) {
         ScheduleType.GRAPH_1 -> shiftForGraph1(date, brigade)
         ScheduleType.GRAPH_2 -> shiftForGraph2(date, brigade)
     }
 
     private fun shiftForGraph1(date: LocalDate, brigade: Int): ShiftType {
-        require(brigade in 1..ScheduleType.GRAPH_1.brigadeCount) {
-            "Некорректный номер бригады Графика №1: $brigade"
-        }
+        val safeBrigade = brigade.coerceIn(1, ScheduleType.GRAPH_1.brigadeCount)
         val diff = ChronoUnit.DAYS.between(anchorDate, date)
-        val offset = getOffsetForBrigade(brigade)
+        val offset = getOffsetForBrigade(safeBrigade)
         val idx = (((diff + offset) % CYCLE_SIZE) + CYCLE_SIZE) % CYCLE_SIZE
         return CYCLE[idx.toInt()]
     }
 
     private fun shiftForGraph2(date: LocalDate, brigade: Int): ShiftType {
-        require(brigade in 1..ScheduleType.GRAPH_2.brigadeCount) {
-            "Некорректный номер бригады Графика №2: $brigade"
-        }
+        val safeBrigade = brigade.coerceIn(1, ScheduleType.GRAPH_2.brigadeCount)
         val diff = ChronoUnit.DAYS.between(anchorDateGraph2, date)
-        val offset = getOffsetForBrigadeGraph2(brigade)
+        val offset = getOffsetForBrigadeGraph2(safeBrigade)
         val idx = (((diff + offset) % CYCLE2_SIZE) + CYCLE2_SIZE) % CYCLE2_SIZE
         return CYCLE2[idx.toInt()]
     }
@@ -135,7 +134,7 @@ object ShiftSchedule {
      * Время начала смены для активного графика. В Графике №2 смены 12-часовые:
      * Утро 08:00–20:00, Ночь 20:00–08:00 (в отличие от 8-часовых в Графике №1).
      */
-    fun shiftStartTime(shift: ShiftType, scheduleType: ScheduleType = currentScheduleType): LocalTime? =
+    fun shiftStartTime(shift: ShiftType, scheduleType: ScheduleType): LocalTime? =
         when (scheduleType) {
             ScheduleType.GRAPH_1 -> shift.startTime
             ScheduleType.GRAPH_2 -> when (shift) {
@@ -146,7 +145,7 @@ object ShiftSchedule {
         }
 
     /** Время конца смены для активного графика. */
-    fun shiftEndTime(shift: ShiftType, scheduleType: ScheduleType = currentScheduleType): LocalTime? =
+    fun shiftEndTime(shift: ShiftType, scheduleType: ScheduleType): LocalTime? =
         when (scheduleType) {
             ScheduleType.GRAPH_1 -> shift.endTime
             ScheduleType.GRAPH_2 -> when (shift) {
@@ -163,7 +162,7 @@ object ShiftSchedule {
     fun shiftEndDateTime(
         date: LocalDate,
         shift: ShiftType,
-        scheduleType: ScheduleType = currentScheduleType
+        scheduleType: ScheduleType
     ): LocalDateTime? {
         val s = shiftStartTime(shift, scheduleType) ?: return null
         val e = shiftEndTime(shift, scheduleType) ?: return null
