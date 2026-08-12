@@ -88,6 +88,8 @@ class WidgetScheduler(private val context: Context) {
 
     companion object {
         private const val PERIODIC_WORK_NAME = "shift_widget_daily_update"
-        private const val MIDNIGHT_REQUEST_CODE = 1001
+        // Изолированный диапазон, не пересекающийся с BootReceiver (1001),
+        // обычными будильниками (1_000_000+) и тестовыми (100_000+).
+        private const val MIDNIGHT_REQUEST_CODE = 800_001
     }
 }

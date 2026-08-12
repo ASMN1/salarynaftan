@@ -38,7 +38,9 @@ object WidgetScheduleModel {
 
     private fun adjustedPayDate(day: Int, month: YearMonth): LocalDate {
         var date = month.atDay(day)
-        while (date.dayOfWeek.value > 5) date = date.minusDays(1)
+        // Зарплата выплачивается не ранее следующего рабочего дня,
+        // поэтому выходные (сб/вс) сдвигаем ВПЕРЁД, а не назад (п.4.4 аудита).
+        while (date.dayOfWeek.value > 5) date = date.plusDays(1)
         return date
     }
 }

@@ -139,6 +139,18 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
                     AlarmManager.AlarmClockInfo(triggerTime, pendingIntent),
                     pendingIntent
                 )
+            } else {
+                // Точные будильники запрещены — отложить не получится.
+                // Показываем уведомление, чтобы пользователь понимал,
+                // что snooze не сработает (п.1.3 аудита).
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                val notif = Notifications.info(
+                    context = this,
+                    title = "Нельзя отложить будильник",
+                    text = "Разрешите точные будильники в настройках, чтобы функция «Отложить» работала.",
+                    notificationId = 1003
+                ).build()
+                nm.notify(1003, notif)
             }
         } catch (_: Exception) { }
     }

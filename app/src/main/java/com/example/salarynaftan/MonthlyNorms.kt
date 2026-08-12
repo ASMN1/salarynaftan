@@ -86,10 +86,12 @@ object MonthlyNorms {
     fun norm(year: Int, monthIndex: Int, scheduleType: ScheduleType = ScheduleType.GRAPH_1): Double =
         if (scheduleType == ScheduleType.GRAPH_2) {
             NORMS_BY_YEAR_GRAPH2[year]?.getOrNull(monthIndex)
-                ?: NORMS_BY_YEAR_GRAPH2[2026]!![monthIndex]
+                ?: NORMS_BY_YEAR_GRAPH2[2026]?.getOrNull(monthIndex)
+                ?: 160.0
         } else {
             NORMS_BY_YEAR[year]?.getOrNull(monthIndex)
-                ?: NORMS_BY_YEAR[2026]!![monthIndex]
+                ?: NORMS_BY_YEAR[2026]?.getOrNull(monthIndex)
+                ?: 160.0
         }
 
     // Годы, для которых известны нормы из таблицы
