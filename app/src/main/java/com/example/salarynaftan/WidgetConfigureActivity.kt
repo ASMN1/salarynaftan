@@ -58,9 +58,16 @@ class WidgetConfigureActivity : Activity() {
         val brigadeLabels = (1..scheduleType.brigadeCount).map { "Бригада $it" }
 
         for (i in 1..scheduleType.brigadeCount) {
+            val isCurrent = i == currentBrigade
             val button = Button(this).apply {
                 text = brigadeLabels[i - 1]
                 textSize = 16f
+                // Визуально выделяем текущую бригаду (ПОТЕНЦ-4): у Button нет
+                // селектора для isSelected, поэтому меняем фон и цвет текста.
+                if (isCurrent) {
+                    setBackgroundColor(0xFF00E676.toInt())
+                    setTextColor(android.graphics.Color.BLACK)
+                }
                 setOnClickListener {
                     // Единый источник бригады: SettingsManager.setBrigade обновляет
                     // и DataStore (приложение), и SharedPreferences (виджет), а также
@@ -85,11 +92,6 @@ class WidgetConfigureActivity : Activity() {
                 setMargins(0, 0, 0, 16)
             }
             button.layoutParams = params
-
-            // Highlight current brigade
-            if (i == currentBrigade) {
-                button.isSelected = true
-            }
 
             rootLayout.addView(button)
         }

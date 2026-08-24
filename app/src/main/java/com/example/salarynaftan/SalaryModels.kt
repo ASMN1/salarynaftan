@@ -103,6 +103,8 @@ data class SalaryUiState(
     val mmDetiCountInput: String = "0",
     val childrenCountInput: String = "0",
     val stravitaInput: String = "0",
+    val inyeVyplatyInput: String = "0",
+    val inyeUderzhanijaInput: String = "0",
     val showResults: Boolean = false,
     val calculationResult: CalculationResultWithError? = null,
     val errorMessage: String? = null
@@ -120,6 +122,8 @@ data class CalculationResultWithError(
     val nochPay: Double = 0.0,
     val prazdn: Double = 0.0,
     val prem: Double = 0.0,
+    val profMasterstvo: Double = 0.0,
+    val intensyvnost: Double = 0.0,
     val mmDeti: Double = 0.0,
     val sumBeforePension: Double = 0.0,
     val pension: Double = 0.0,
@@ -139,6 +143,41 @@ fun parseNonNegative(input: String): Double =
     input.replace(',', '.').replace(" ", "") // «1 000» -> «1000», а не «1.000»
         .toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 } ?: 0.0
 
+/** Элемент «иных выплат/удержаний»: название + сумма. */
+data class ExtraItem(val name: String, val amount: Double)
+
+/**
+ * Разбирает строку доплат в список позиций «название:сумма», разделённых `;`.
+ * Пример: "Премия:100;Компенсация:50" → [("Премия",100),("Компенсация",50)].
+ * Если у позиции нет названия — она превращается в ("", сумма).
+ */
+fun parseExtraItems(raw: String): List<ExtraItem> {
+    if (raw.isBlank()) return emptyList()
+    return raw.split(';')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map { seg ->
+            val idx = seg.indexOf(':')
+            if (idx > 0) {
+                ExtraItem(seg.substring(0, idx).trim(), parseNonNegative(seg.substring(idx + 1)))
+            } else {
+                ExtraItem("", parseNonNegative(seg))
+            }
+        }
+}
+
+/** Общая сумма всех позиций «иных» доплат/удержаний (для расчёта). */
+fun sumExtraItems(raw: String): Double = parseExtraItems(raw).sumOf { it.amount }
+
+/**
+ * Собирает строку-хранилище из списка позиций. Пустые строки (без названия
+ * и суммы) пропускаются, чтобы не плодить «:0».
+ */
+fun buildExtraRaw(items: List<ExtraItem>): String =
+    items
+        .filter { it.name.isNotBlank() || it.amount > 0 }
+        .joinToString(";") { "${it.name.trim()}:${MoneyFormatter.format(it.amount)}" }
+
 /**
  * Адаптер из UI-состояния в входные данные расчёта. Размещён рядом с
  * SalaryUiState (тот же файл), чтобы чистая логика SalaryCalculator не
@@ -153,7 +192,9 @@ fun monthInputFrom(state: SalaryUiState): SalaryCalculator.MonthInput = SalaryCa
     subbotnikInput = parseNonNegative(state.subbotnikInput),
     mmDetiCount = parseNonNegative(state.mmDetiCountInput),
     childrenCount = parseNonNegative(state.childrenCountInput),
-    stravitaInput = parseNonNegative(state.stravitaInput)
+    stravitaInput = parseNonNegative(state.stravitaInput),
+    inyeVyplaty = sumExtraItems(state.inyeVyplatyInput),
+    inyeUderzhanija = sumExtraItems(state.inyeUderzhanijaInput)
 )
 
 fun parseMissedDays(input: String): Set<Int> =
@@ -171,6 +212,44 @@ fun displayInt(input: String): String =
 /** Форматирует коэффициент (0..1) как целые проценты для ввода в поле. */
 fun percentInput(coef: Double): String =
     java.lang.String.format(java.util.Locale.US, "%.0f", coef * 100)
+
+/** Вариант выбора (подпись + коэффициент) для селекторов стажа и класса вредности. */
+data class CoefOption(val label: String, val coef: Double)
+
+/** Таблица «коэффициент вредности» (надбавка за стаж) из Зарплата6.xlsx (R/S). */
+val STAZH_COEF_OPTIONS = listOf(
+    CoefOption("до 1 года", 0.10),
+    CoefOption("1–5 лет", 0.20),
+    CoefOption("5–10 лет", 0.25),
+    CoefOption("10–15 лет", 0.35),
+    CoefOption("15–30 лет", 0.45),
+    CoefOption("более 30 лет", 0.50),
+)
+
+/** Классы вредности (КОЭФ.КЛАССА / 100 = ставка вредности за час). */
+val harmClassOptions = listOf(
+    CoefOption("1 класс", 0.20),
+    CoefOption("2 класс", 0.14),
+    CoefOption("3 класс", 0.10),
+)
+
+/** Разряды и их базовые ставки (из Зарплата6.xlsx, столбцы N/P). */
+val RANK_BASE_RATE_OPTIONS = listOf(
+    CoefOption("7 разряд", 613.55),
+    CoefOption("6 разряд", 574.26),
+    CoefOption("5 разряд", 522.88),
+    CoefOption("4 разряд", 474.52),
+    CoefOption("1 разряд", 302.24),
+)
+
+/** Подпись варианта по значению коэффициента (для стажа/класса вредности). */
+fun coefOptionLabel(options: List<CoefOption>, coef: Double): String {
+    // Сравнение с допуском: сохранённое значение могло прийти из Float с потерей
+    // точности (0.14 → 0.14000000000000001), поэтому точное == не подходит.
+    val rounded = Math.round(coef * 1000.0) / 1000.0
+    val found = options.find { Math.round(it.coef * 1000.0) / 1000.0 == rounded }
+    return found?.label ?: percentInput(coef)
+}
 
 /**
  * Единая точка округления/форматирования денежных сумм (№20).

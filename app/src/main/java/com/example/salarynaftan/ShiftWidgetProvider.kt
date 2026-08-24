@@ -1,5 +1,6 @@
 package com.example.salarynaftan
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -56,6 +57,7 @@ class ShiftWidgetProvider : AppWidgetProvider() {
         private val cellNumIds = Array(6) { IntArray(7) }
         private val cellShiftIds = Array(6) { IntArray(7) }
 
+        @SuppressLint("DiscouragedApi")
         private fun ensureCellIds(context: Context) {
             if (cellIds[0][0] != 0) return
             for (row in 0 until 6) for (col in 0 until 7) {

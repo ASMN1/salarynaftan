@@ -1,6 +1,7 @@
 package com.example.salarynaftan.ui
 import com.example.salarynaftan.*
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -13,10 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import timber.log.Timber
 
+@SuppressLint("StaticFieldLeak")
 class SettingsViewModel(
     application: Application,
     private val settingsManager: SettingsManager,
-    private val colorSettings: ColorSettingsManager
+    private val colorSettings: ColorSettingsManager,
+    private val alarmScheduler: AlarmScheduler
 ) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
@@ -83,15 +86,15 @@ class SettingsViewModel(
         }
     }
 
-    fun setBrigade(brigade: Int, scheduler: AlarmScheduler) {
+    fun setBrigade(brigade: Int) {
         _uiState.update { it.copy(brigade = brigade) }
         settingsManager.setBrigade(brigade)
         // Гасим сменные будильники всех бригад и оставляем только активной (п.4.4)
-        scheduler.switchActiveBrigade(brigade)
+        alarmScheduler.switchActiveBrigade(brigade)
     }
 
     /** Переключение типа графика (№1/№2). Бригаду корректирует SettingsManager. */
-    fun setScheduleType(type: ScheduleType, scheduler: AlarmScheduler) {
+    fun setScheduleType(type: ScheduleType) {
         if (_uiState.value.scheduleType == type) return
         settingsManager.setScheduleType(type)
         val correctedBrigade = settingsManager.getBrigade()
@@ -101,7 +104,7 @@ class SettingsViewModel(
         // Пересчитываем сменные будильники под новый график (другие бригады,
         // другие времена/цикл) — иначе старые сигналы останутся висеть.
         try {
-            scheduler.rescheduleAllAlarmsForBrigade(correctedBrigade)
+            alarmScheduler.rescheduleAllAlarmsForBrigade(correctedBrigade)
         } catch (_: Exception) {
             // Невалидные настройки будильников не должны ронять экран настроек.
         }

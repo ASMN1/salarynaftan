@@ -180,8 +180,11 @@ object SchedulePdfExporter {
         val dir = File(context.cacheDir, "exports")
         dir.mkdirs()
         val file = File(dir, "График_бригада_${brigade}_${month.monthValue}_${month.year}.pdf")
-        FileOutputStream(file).use { out ->
-            document.writeTo(out)
+        // Запись с повторами: разовый сбой файловой системы не должен ронять экспорт (п.5.4).
+        ExportRetry.withRetry(operationName = "PDF графика за месяц") {
+            FileOutputStream(file).use { out ->
+                document.writeTo(out)
+            }
         }
         document.close()
 
@@ -209,8 +212,11 @@ object SchedulePdfExporter {
         val dir2 = File(context.cacheDir, "exports")
         dir2.mkdirs()
         val file = File(dir2, "График_бригада_${brigade}_год_$year.pdf")
-        FileOutputStream(file).use { out ->
-            document.writeTo(out)
+        // Запись с повторами: разовый сбой файловой системы не должен ронять экспорт (п.5.4).
+        ExportRetry.withRetry(operationName = "PDF графика за год") {
+            FileOutputStream(file).use { out ->
+                document.writeTo(out)
+            }
         }
         document.close()
 

@@ -26,17 +26,10 @@
     <string name="salary_section_salary_settings">Оклад и коэффициенты</string>
     <string name="salary_field_salary">Оклад</string>
     <string name="salary_field_premium">Премия, %%</string>
-    <string name="salary_field_stazh">Стаж, %%</string>
-    <string name="salary_field_pps">ППС, %%</string>
+    <string name="salary_field_pps">Доплата за особые условия труда (Пенсия), %%</string>
     <string name="salary_save">💾 Сохранить</string>
     <string name="salary_saved">Сохранено</string>
-    <string name="salary_err_salary_positive">Оклад должен быть положительным числом</string>
-    <string name="salary_err_premium_range">Коэф. премии — от 0 до 200%%</string>
-    <string name="salary_err_stazh_range">Коэф. стажа — от 0 до 200%%</string>
-    <string name="salary_err_pps_range">ППС — от 0 до 100%%</string>
     <string name="salary_section_work_time">Рабочее время</string>
-    <string name="salary_field_norm_manual">Норма часов (вручную)</string>
-    <string name="salary_field_prazdn_auto">Праздн. (авто)</string>
     <string name="salary_field_children">Детей</string>
     <string name="salary_section_premiums">Премии и доп. выплаты</string>
     <string name="salary_field_za_otsutstvuushego">За отсутств. (руб)</string>
@@ -47,5 +40,23 @@
     <string name="salary_field_pozhertvovanja">Пожертв. (руб)</string>
     <string name="salary_field_subbotnik">Субботник (руб)</string>
     <string name="salary_field_stravita">Стравита (руб)</string>
+    <string name="salary_field_prof">Профмастерство, %%</string>
+    <string name="salary_field_intens">Интенсивность, %%</string>
+    <string name="salary_field_inye_vyplaty">Иные выплаты</string>
+    <string name="salary_field_inye_uderzhanija">Иные удержания</string>
     <string name="salary_calculate">Рассчитать</string>
+
+    <!-- Splash screen -->
+    <string name="splash_logo_desc">Логотип</string>
+    <string name="splash_title">ОАО «Нафтан»</string>
+    <string name="splash_subtitle">Расчёт зарплаты и график смен</string>
+
+    <!-- Виджет: названия дней недели -->
+    <string name="widget_day_mon">Пн</string>
+    <string name="widget_day_tue">Вт</string>
+    <string name="widget_day_wed">Ср</string>
+    <string name="widget_day_thu">Чт</string>
+    <string name="widget_day_fri">Пт</string>
+    <string name="widget_day_sat">Сб</string>
+    <string name="widget_day_sun">Вс</string>
 </resources>

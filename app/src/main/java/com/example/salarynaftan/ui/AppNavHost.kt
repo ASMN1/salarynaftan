@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,6 +57,14 @@ fun AppNavHost(
 
     var selectedTab by rememberSaveable {
         mutableIntStateOf(activity?.intent?.getIntExtra("selected_tab", 0) ?: 0)
+    }
+
+    // БАГ-3: при onNewIntent (будильник/виджет) intent обновляется в MainActivity,
+    // но rememberSaveable не перечитывается. Слушаем изменения intent и обновляем вкладку.
+    val currentIntent = activity?.intent
+    LaunchedEffect(currentIntent) {
+        val tab = currentIntent?.getIntExtra("selected_tab", -1) ?: -1
+        if (tab in 0..4) selectedTab = tab
     }
 
     // Сохраняет состояние каждой вкладки (выбранный месяц, раскрытые секции,

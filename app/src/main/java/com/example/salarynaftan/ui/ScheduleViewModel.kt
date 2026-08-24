@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.salarynaftan.AlarmScheduler
 import com.example.salarynaftan.ScheduleType
 import com.example.salarynaftan.SettingsManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +40,9 @@ class ScheduleViewModel(
     )
     val state: StateFlow<ScheduleUiState> = _state.asStateFlow()
     private val saveMutex = Mutex()
+
+    // Отмена предыдущей операции applyVacation при быстром повторном вызове (п.4.1 аудита).
+    private var vacationJob: Job? = null
 
     init { loadMonth(_state.value.visibleMonth) }
 
@@ -77,11 +81,14 @@ class ScheduleViewModel(
     }
 
     fun applyVacation(from: LocalDate, to: LocalDate, remove: Boolean) {
+        // Отменяем предыдущую операцию, чтобы исключить гонку записи в Room
+        // при быстром повторном вызове (п.4.1 аудита).
+        vacationJob?.cancel()
         val grouped = groupVacationDays(from, to)
-        grouped.forEach { (month, days) ->
-            val monthKey = key(month)
-            viewModelScope.launch {
-                saveMutex.withLock {
+        vacationJob = viewModelScope.launch {
+            saveMutex.withLock {
+                grouped.forEach { (month, days) ->
+                    val monthKey = key(month)
                     if (remove) data.removeVacationDays(month, days)
                     else data.updateVacationDays(month, days)
                     val updated = if (remove) vacationDays(month) - days else vacationDays(month) + days

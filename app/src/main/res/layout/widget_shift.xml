@@ -2,12 +2,14 @@
 <!-- Полномесячный виджет графика смен. 6 строк x 7 дней (до 42 ячеек).
      Ячейки, не входящие в текущий месяц, скрываются через Visibility. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:padding="6dp"
-    android:background="@drawable/widget_background">
+    android:background="@drawable/widget_background"
+    tools:ignore="HardcodedText">
 
     <!-- Шапка: месяц/год + бригада -->
     <LinearLayout
@@ -48,39 +50,39 @@
         <TextView
             android:id="@+id/widget_wd_mon"
             style="@style/WidgetWeekdayCell"
-            android:text="Пн" />
+            android:text="@string/widget_day_mon" />
         <TextView
             android:id="@+id/widget_wd_tue"
             style="@style/WidgetWeekdayCell"
-            android:text="Вт" />
+            android:text="@string/widget_day_tue" />
         <TextView
             android:id="@+id/widget_wd_wed"
             style="@style/WidgetWeekdayCell"
-            android:text="Ср" />
+            android:text="@string/widget_day_wed" />
         <TextView
             android:id="@+id/widget_wd_thu"
             style="@style/WidgetWeekdayCell"
-            android:text="Чт" />
+            android:text="@string/widget_day_thu" />
         <TextView
             android:id="@+id/widget_wd_fri"
             style="@style/WidgetWeekdayCell"
-            android:text="Пт" />
+            android:text="@string/widget_day_fri" />
         <TextView
             android:id="@+id/widget_wd_sat"
             style="@style/WidgetWeekdayCell"
-            android:text="Сб" />
+            android:text="@string/widget_day_sat" />
         <TextView
             android:id="@+id/widget_wd_sun"
             style="@style/WidgetWeekdayCell"
-            android:text="Вс" />
+            android:text="@string/widget_day_sun" />
     </LinearLayout>
 
     <!-- 6 строк сетки месяца -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        tools:ignore="TooManyViews">
 
         <LinearLayout
             android:layout_width="match_parent"

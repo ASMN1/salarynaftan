@@ -45,7 +45,8 @@ val appModule = module {
         SettingsViewModel(
             application = androidApplication(),
             settingsManager = get(),
-            colorSettings = get()
+            colorSettings = get(),
+            alarmScheduler = get()
         )
     }
 

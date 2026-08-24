@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -97,6 +99,23 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
         val alarmTitle = intent.getStringExtra("alarm_title") ?: "Смена"
         val settings: SettingsManager = get()
 
+        // Убираем уведомление из шторки, если оно было показано (заблокированный
+        // экран через fullScreenIntent). Иначе остаётся дублирующее уведомление.
+        val notificationId = intent.getIntExtra("notification_id", -1)
+        if (notificationId >= 0) {
+            try {
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                nm.cancel(notificationId)
+            } catch (_: Exception) { }
+        }
+
+        // Сохраняем сменные параметры для snooze, чтобы после отложенного
+        // срабатывания будильник корректно перепланировался (НЕДОЧЁТ-5).
+        pendingShiftType = intent.getStringExtra("shift_type_name")
+        pendingBrigade = intent.getIntExtra("brigade", 1)
+        pendingAlarmIndex = intent.getIntExtra("alarm_index", -1)
+        pendingAlarmTime = intent.getStringExtra("alarm_time")
+
         // Запускаем звук/вибрацию в фоновом сервисе — он не оборвётся,
         // если активность будет закрыта системой.
         AlarmSoundService.start(
@@ -126,6 +145,12 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
 
         val intent = Intent(this, AlarmReceiver::class.java).apply {
             putExtra("alarm_title", title)
+            // Передаём сменные параметры, чтобы AlarmReceiver перепланировал
+            // смену на следующий день после snooze (НЕДОЧЁТ-5).
+            pendingShiftType?.let { putExtra("shift_type_name", it) }
+            putExtra("brigade", pendingBrigade)
+            putExtra("alarm_index", pendingAlarmIndex)
+            pendingAlarmTime?.let { putExtra("alarm_time", it) }
         }
         val requestCode = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
         val pendingIntent = PendingIntent.getBroadcast(
@@ -163,6 +188,12 @@ class AlarmRingingActivity : ComponentActivity(), KoinComponent {
         finish()
     }
 
+    // Сменные параметры исходного сигнала (для корректного snooze).
+    private var pendingShiftType: String? = null
+    private var pendingBrigade: Int = 1
+    private var pendingAlarmIndex: Int = -1
+    private var pendingAlarmTime: String? = null
+
     override fun onDestroy() {
         super.onDestroy()
     }
@@ -185,23 +216,25 @@ fun AlarmScreenUI(title: String, onDismiss: () -> Unit, onSnooze: () -> Unit) {
         }
     }
 
-    // Анимации пульсации
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    // Нижние системные insets (панель навигации), чтобы контент не накладывался.
+    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f, targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "scale"
+    // Анимации пульсации кольца
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val ringScale by infiniteTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "ringScale"
+    )
+    val ringAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Reverse),
+        label = "ringAlpha"
     )
     val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f, targetValue = 0.8f,
+        initialValue = 0.35f, targetValue = 0.9f,
         animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "glow"
-    )
-    val arrowBounce by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 8f,
-        animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "arrow"
     )
 
     // Свайп: смещение в пикселях
@@ -209,8 +242,9 @@ fun AlarmScreenUI(title: String, onDismiss: () -> Unit, onSnooze: () -> Unit) {
     val density = LocalDensity.current
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val threshold = screenWidthPx * 0.30f
+    val progress = (kotlin.math.abs(offsetX) / threshold).coerceIn(0f, 1f)
+    val isSnoozeSide = offsetX > 0
 
-    // Параметры для gesture-блока (не @Composable)
     val dismissAction = rememberUpdatedState(onDismiss)
     val snoozeAction = rememberUpdatedState(onSnooze)
 
@@ -219,21 +253,14 @@ fun AlarmScreenUI(title: String, onDismiss: () -> Unit, onSnooze: () -> Unit) {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0D0D0D),
-                        Color(0xFF1A1A2E),
-                        Color(0xFF0D0D0D)
-                    )
+                    colors = listOf(Color(0xFF0A0A14), Color(0xFF1B1B33), Color(0xFF0D0D1A))
                 )
             )
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        if (offsetX > threshold) {
-                            snoozeAction.value()
-                        } else if (offsetX < -threshold) {
-                            dismissAction.value()
-                        }
+                        if (offsetX > threshold) snoozeAction.value()
+                        else if (offsetX < -threshold) dismissAction.value()
                         offsetX = 0f
                     },
                     onDragCancel = { offsetX = 0f },
@@ -243,92 +270,51 @@ fun AlarmScreenUI(title: String, onDismiss: () -> Unit, onSnooze: () -> Unit) {
                 )
             }
     ) {
-        // Фоновая подсветка при свайпе
-        val progress = (kotlin.math.abs(offsetX) / threshold).coerceIn(0f, 1f)
-        if (progress > 0.02f) {
-            val bgColor = if (offsetX > 0) {
-                Color(0xFF00E676).copy(alpha = progress * 0.3f)
-            } else {
-                Color(0xFFFF5252).copy(alpha = progress * 0.3f)
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(bgColor)
-            )
+        // Амбиентное свечение снизу, меняет цвет по направлению свайпа
+        val ambientColor = when {
+            progress > 0.02f && isSnoozeSide -> Color(0xFF00E676)
+            progress > 0.02f -> Color(0xFFFF5252)
+            else -> Color(0xFF00E676)
         }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.radialGradient(
+                    colors = listOf(ambientColor.copy(alpha = 0.25f * progress + 0.03f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(0.5f, 1f),
+                    radius = 900f
+                ))
+        )
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .offset { IntOffset(offsetX.roundToInt(), 0) }
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 24.dp)
+                .padding(bottom = bottomInset + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(60.dp))
+            Spacer(modifier = Modifier.height(40.dp))
 
-            // Текущее время
+            // Крупные часы
             Text(
                 text = currentTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                fontSize = 72.sp,
+                fontSize = 84.sp,
                 fontWeight = FontWeight.Thin,
-                color = Color.White.copy(alpha = 0.9f),
-                letterSpacing = 4.sp
+                color = Color.White.copy(alpha = 0.95f),
+                letterSpacing = 6.sp
             )
             Text(
                 text = currentTime.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("ru"))),
-                fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.5f)
+                fontSize = 15.sp,
+                color = Color.White.copy(alpha = 0.55f)
             )
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // Пульсирующий круг с иконкой
-            Box(contentAlignment = Alignment.Center) {
-                // Свечение
-                Box(
-                    modifier = Modifier
-                        .size(160.dp)
-                        .scale(pulseScale)
-                        .alpha(glowAlpha)
-                        .clip(CircleShape)
-                        .background(Color(0xFF00E676).copy(alpha = 0.15f))
-                )
-                // Основной круг
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF00E676).copy(alpha = 0.3f),
-                                    Color(0xFF00E676).copy(alpha = 0.05f)
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("⏰", fontSize = 56.sp)
-                }
-            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "ПОРА ВСТАВАТЬ",
-                color = Color(0xFF00E676),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 4.sp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
                 text = title,
                 color = Color.White,
-                fontSize = 28.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
@@ -336,73 +322,114 @@ fun AlarmScreenUI(title: String, onDismiss: () -> Unit, onSnooze: () -> Unit) {
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Индикаторы свайпа
-            Row(
+            // ===== БОЛЬШОЙ КРУГ В ЦЕНТРЕ — его перетаскиваешь свайпом =====
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .height(260.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Отложить → свайп вправо
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.alpha(if (offsetX > 0) (offsetX / threshold).coerceIn(0.3f, 1f) else 0.3f)
-                ) {
-                    Text(
-                        text = "›",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E676),
-                        modifier = Modifier.offset { IntOffset(arrowBounce.roundToInt(), 0) }
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text("Отложить", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
-                        Text("+5 мин", fontSize = 11.sp, color = Color(0xFF00E676).copy(alpha = 0.7f))
-                    }
-                }
+                // Подписи действий по бокам (появляются при свайпе)
+                Text(
+                    text = "😴 Отложить",
+                    color = Color(0xFF00E676),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .alpha(if (isSnoozeSide) progress else 0.3f)
+                )
+                Text(
+                    text = "Выключить ⏹",
+                    color = Color(0xFFFF5252),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .alpha(if (!isSnoozeSide) progress else 0.3f)
+                )
 
-                // Выключить ← свайп влево
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.alpha(if (offsetX < 0) (-offsetX / threshold).coerceIn(0.3f, 1f) else 0.3f)
+                // Круг, который двигается вместе со свайпом
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(offsetX.roundToInt(), 0) }
+                        .size(200.dp)
+                        .graphicsLayer {
+                            rotationZ = offsetX / 20f
+                            scaleX = 1f + progress * 0.05f
+                            scaleY = 1f + progress * 0.05f
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Выключить", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF5252))
-                        Text("свайп влево", fontSize = 11.sp, color = Color(0xFFFF5252).copy(alpha = 0.7f))
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "‹",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF5252),
-                        modifier = Modifier.offset { IntOffset(-arrowBounce.roundToInt(), 0) }
+                    // Расширяющееся кольцо
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .scale(ringScale)
+                            .alpha(ringAlpha)
+                            .border(2.dp, Color(0xFF00E676).copy(alpha = 0.6f), CircleShape)
                     )
+                    // Свечение
+                    Box(
+                        modifier = Modifier
+                            .size(180.dp)
+                            .scale(1.1f)
+                            .alpha(glowAlpha)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E676).copy(alpha = 0.18f))
+                    )
+                    // Основной круг
+                    Box(
+                        modifier = Modifier
+                            .size(150.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFF00E676).copy(alpha = 0.45f),
+                                        Color(0xFF009688).copy(alpha = 0.15f)
+                                    )
+                                )
+                            )
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⏰", fontSize = 72.sp)
+                    }
                 }
             }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Подсказка направления
+            Text(
+                text = "Свайп вправо — отложить · влево — выключить",
+                color = Color.White.copy(alpha = 0.4f),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Прогресс-бар свайпа
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.1f))
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxHeight()
                         .fillMaxWidth(progress)
-                        .clip(RoundedCornerShape(2.dp))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
                         .background(
-                            if (offsetX > 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                            if (offsetX > 0) Brush.horizontalGradient(listOf(Color(0xFF00E676), Color(0xFF00BFA5)))
+                            else Brush.horizontalGradient(listOf(Color(0xFFFF5252), Color(0xFFD50000)))
                         )
                 )
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

@@ -19,6 +19,7 @@ local.properties
 .kotlin/
 *.ps1
 *.log
+lint_pid.txt
 
 # Резервная копия исходников и служебные файлы
 backup_src_pre_packages/

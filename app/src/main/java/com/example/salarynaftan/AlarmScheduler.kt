@@ -123,6 +123,10 @@ class AlarmScheduler(
     fun updateAutoSilenceAlarms(isEnabled: Boolean, startTime: String, endTime: String) =
         autoSilenceScheduler.updateAutoSilenceAlarms(isEnabled, startTime, endTime)
 
+    /** Тестовая авто-тишина: включить беззвучный режим через [delaySeconds], выключить через [silenceDurationSeconds]. */
+    fun scheduleTestSilence(delaySeconds: Int, silenceDurationSeconds: Int): Boolean =
+        autoSilenceScheduler.scheduleTestSilence(delaySeconds, silenceDurationSeconds)
+
     fun rescheduleAllAfterBoot() {
         // Каждый будильник планируется в изолированном runCatching: исключение
         // на одном (например, на конкретном OEM) не должно останавливать

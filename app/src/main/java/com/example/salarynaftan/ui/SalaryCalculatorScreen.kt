@@ -78,15 +78,14 @@ fun SalaryCalculatorScreen(
         )
 
         // ===== НАСТРОЙКИ ОКЛАДА И КОЭФФИЦИЕНТОВ =====
-        SalarySettingsSection(settings = settings, msgSaved = msgSaved)
-
-        // ===== СЕКЦИЯ 1: РАБОЧЕЕ ВРЕМЯ =====
-        WorkTimeSection(
-            uiState = uiState,
+        SalarySettingsSection(
             settings = settings,
+            msgSaved = msgSaved,
             viewModel = viewModel,
-            msgSaved = msgSaved
+            uiState = uiState
         )
+
+        // ===== СЕКЦИЯ 1: РАБОЧЕЕ ВРЕМЯ (убрана — всё берётся из графика) =====
 
         // ===== СЕКЦИЯ 2: ПРЕМИИ И ВЫПЛАТЫ =====
         PremiumsSection(uiState = uiState, viewModel = viewModel)

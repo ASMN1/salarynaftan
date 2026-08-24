@@ -45,12 +45,13 @@ fun TodayShiftCard(
     primaryColor: Color,
     scheduleType: ScheduleType = ScheduleType.GRAPH_1
 ) {
-    val today = remember { LocalDate.now() }
-    val shift = remember(brigade, scheduleType) { ShiftSchedule.shiftFor(today, brigade, scheduleType) }
+    val today = remember { mutableStateOf(LocalDate.now()) }
+    var shift by remember { mutableStateOf(ShiftSchedule.shiftFor(today.value, brigade, scheduleType)) }
+    LaunchedEffect(brigade, scheduleType) {
+        shift = ShiftSchedule.shiftFor(today.value, brigade, scheduleType)
+    }
 
     // Настраиваемые цвета смен из ColorSettingsManager — те же, что в календаре
-    // (единый источник, п.1.2). Без понимания, что цвет изменили в настройках,
-    // карточка «Сегодня» показывала бы устаревший оттенок.
     val colorSettings = org.koin.compose.koinInject<ColorSettingsManager>()
     val shiftColor = when (shift) {
         ShiftType.MORNING -> colorSettings.getMorningColor()
@@ -59,16 +60,22 @@ fun TodayShiftCard(
         ShiftType.OFF -> colorSettings.getOffColor()
     }
 
-    // Текущее время, обновляется 1 раз в минуту для обратного отсчёта
+    // Текущее время, обновляется раз в минуту для обратного отсчёта.
+    // При переходе через полночь обновляем today.value и shift.
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) {
             now = LocalDateTime.now()
+            val newDate = now.toLocalDate()
+            if (newDate != today.value) {
+                today.value = newDate
+                shift = ShiftSchedule.shiftFor(newDate, brigade, scheduleType)
+            }
             delay(60_000)
         }
     }
 
-    val endTime = ShiftSchedule.shiftEndDateTime(today, shift, scheduleType)
+    val endTime = ShiftSchedule.shiftEndDateTime(today.value, shift, scheduleType)
     val remaining = endTime?.let { java.time.Duration.between(now, it) }
     val isActive = endTime != null && remaining != null && !remaining.isNegative
 
@@ -105,7 +112,7 @@ fun TodayShiftCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("ru"))),
+                        text = today.value.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale("ru"))),
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )

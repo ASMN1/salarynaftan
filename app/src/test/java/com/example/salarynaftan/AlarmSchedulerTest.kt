@@ -32,6 +32,7 @@ class AlarmSchedulerTest {
     private val pendingIntent = mockk<PendingIntent>()
     private val prefs = mockk<SharedPreferences>(relaxed = true)
     private val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+    private val settings = mockk<SettingsManager>(relaxed = true)
 
     @Before
     fun setUp() {
@@ -52,7 +53,7 @@ class AlarmSchedulerTest {
     }
 
     private fun shiftSched(): ShiftAlarmScheduler {
-        val s = spyk(ShiftAlarmScheduler(context))
+        val s = spyk(ShiftAlarmScheduler(context, settings))
         // Методы, которые обращаются к Android-заглушкам (PendingIntent/Intent),
         // недоступны в unit-тесте — заменяем их заглушками.
         every { s.scheduleSingleShiftAlarm(any(), any(), any(), any()) } just Runs

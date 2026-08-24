@@ -15,6 +15,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -42,6 +43,12 @@ android {
         unitTests {
             isIncludeAndroidResources = true
         }
+    }
+
+    sourceSets {
+        // Подключаем Room-схемы к assets инструментальных тестов, чтобы
+        // миграционные тесты (AppDatabaseMigrationTest) находили JSON-схемы.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
     kotlin {

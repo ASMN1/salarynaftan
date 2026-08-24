@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,7 +75,7 @@ fun AppTheme(
     )
 
     // Масштаб интерфейса: масштабирует все dp/sp равномерно во всех вкладках.
-    var uiScale by remember { mutableStateOf(settings.getUiScale()) }
+    var uiScale by remember { mutableFloatStateOf(settings.getUiScale()) }
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density * uiScale,
@@ -115,10 +116,14 @@ fun AppTheme(
         isDarkTheme = isDark
         useDynamicColors = settings.getUseDynamicColors()
         settings.saveTheme(isDark)
+        // Обновляем и primary, чтобы UI не расходился с сохранённым значением (БАГ-2).
+        val newPrimary = ThemeDefaults.primary(isDark)
         val newBg = ThemeDefaults.background(isDark)
         val newSurface = ThemeDefaults.surface(isDark)
+        targetPrimary = newPrimary
         targetBackground = newBg
         targetSurface = newSurface
+        settings.savePrimaryColor(newPrimary)
         settings.saveBackgroundColor(newBg)
         settings.saveSurfaceColor(newSurface)
     }

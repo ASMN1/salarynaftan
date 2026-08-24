@@ -174,7 +174,9 @@ fun ScheduleScreen(
                     Text("⚠️ Точные будильники отключены", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = DesignTokens.Danger, modifier = Modifier.weight(1f))
                     Button(
                         onClick = {
-                            context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                         modifier = Modifier.height(36.dp),

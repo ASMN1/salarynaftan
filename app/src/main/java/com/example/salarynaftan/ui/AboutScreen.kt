@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import timber.log.Timber
 
 @Composable
 fun AboutScreen() {
@@ -266,6 +267,6 @@ fun shareApp(context: Context) {
         context.startActivity(chooserIntent)
     } catch (e: Exception) {
         AppNotifier.showError("Нет приложений для шаринга")
-        e.printStackTrace()
+        Timber.e(e, "Не удалось поделиться приложением")
     }
 }

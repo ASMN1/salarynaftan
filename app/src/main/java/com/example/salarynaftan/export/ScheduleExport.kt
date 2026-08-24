@@ -48,6 +48,7 @@ fun shareScheduleText(
     try {
         context.startActivity(shareIntent)
     } catch (_: android.content.ActivityNotFoundException) {
-        // Нет приложения для отправки
+        // Нет приложения для отправки — показываем понятное сообщение (ПОТЕНЦ-2).
+        com.example.salarynaftan.AppNotifier.showError("Нет приложения для отправки")
     }
 }

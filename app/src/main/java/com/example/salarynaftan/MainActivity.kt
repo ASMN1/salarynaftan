@@ -1,5 +1,6 @@
 package com.example.salarynaftan
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -44,5 +45,13 @@ class MainActivity : ComponentActivity() {
                 AppNavHost(theme = this, permissionManager = permissionManager)
             }
         }
+    }
+
+    // БАГ-3: будильник/виджет открывают MainActivity с selected_tab, но если
+    // Activity уже открыта (singleTop), onNewIntent вызывается без перечитывания
+    // вкладки. Обновляем intent, чтобы AppNavHost перечитал selected_tab.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }

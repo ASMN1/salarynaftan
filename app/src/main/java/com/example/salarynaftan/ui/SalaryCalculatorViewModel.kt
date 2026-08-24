@@ -20,7 +20,7 @@ class SalaryCalculatorViewModel(
     private val savedStateHandle: SavedStateHandle,
     private val settingsManager: SettingsManager,
     private val salaryRepository: SalaryRepository,
-    private val appScope: CoroutineScope = com.example.salarynaftan.AppCoroutineScope
+    private val appScope: CoroutineScope
 ) : ViewModel() {
 
     enum class SalaryField {
@@ -31,7 +31,9 @@ class SalaryCalculatorViewModel(
         SUBBOTNIK,
         MM_DETI,
         CHILDREN_COUNT,
-        STRAVITA
+        STRAVITA,
+        INYE_VYPLATY,
+        INYE_UDERZHANIJA
     }
 
     companion object {
@@ -125,6 +127,8 @@ class SalaryCalculatorViewModel(
                 val mmdeti = saved?.mmDetiCountInput ?: "0"
                 val children = saved?.childrenCountInput ?: "0"
                 val stravita = saved?.stravitaInput ?: "0"
+                val inyeV = saved?.inyeVyplatyInput ?: "0"
+                val inyeU = saved?.inyeUderzhanijaInput ?: "0"
 
                 if (_uiState.value.selectedMonthIndex != monthIndex || _uiState.value.selectedYear != year) return@launch
                 _uiState.update {
@@ -140,6 +144,8 @@ class SalaryCalculatorViewModel(
                         mmDetiCountInput = mmdeti,
                         childrenCountInput = children,
                         stravitaInput = stravita,
+                        inyeVyplatyInput = inyeV,
+                        inyeUderzhanijaInput = inyeU,
                         errorMessage = null,
                         showResults = false,
                         calculationResult = null
@@ -152,9 +158,13 @@ class SalaryCalculatorViewModel(
     }
 
     fun updateField(field: SalaryField, value: String) {
-        // Ранняя валидация ввода (п.6.1): разрешаем только цифры, запятую и точку
-        // (допустимые символы для чисел), чтобы мусор не попадал в состояние.
-        val sanitized = value.filter { it.isDigit() || it == ',' || it == '.' }
+        // Для «иных выплат/удержаний» разрешаем и текст названий (со знаком «:» и
+        // разделителем «;»), для остальных числовых — только цифры, запятую, точку.
+        val sanitized = if (field == SalaryField.INYE_VYPLATY || field == SalaryField.INYE_UDERZHANIJA) {
+            value
+        } else {
+            value.filter { it.isDigit() || it == ',' || it == '.' }
+        }
         val digitsOnly = sanitized.filter { it.isDigit() }
         _uiState.update { current ->
             when (field) {
@@ -168,15 +178,19 @@ class SalaryCalculatorViewModel(
                 SalaryField.CHILDREN_COUNT ->
                     current.copy(childrenCountInput = if (digitsOnly.toIntOrNull()?.let { it <= MAX_CHILDREN } == true) sanitized else current.childrenCountInput)
                 SalaryField.STRAVITA -> current.copy(stravitaInput = sanitized)
+                SalaryField.INYE_VYPLATY -> current.copy(inyeVyplatyInput = sanitized)
+                SalaryField.INYE_UDERZHANIJA -> current.copy(inyeUderzhanijaInput = sanitized)
             }
         }
         // Persist edits while the process is alive; onCleared is not guaranteed
-        // to run during process death. Debouncing avoids a Room write per key.
+        // to run during process death. Debouncing avoids a DB write per key.
+        // Фоновое автосохранение — не критично для ввода: числа уже хранятся в
+        // uiState и используются при расчёте. Разовый сбой записи не должен
+        // показывать уведомление и отвлекать от ввода.
         inputSaveJob?.cancel()
         inputSaveJob = viewModelScope.launch {
-            delay(700)
+            delay(300)
             runCatching { saveCurrentMonthData() }
-                .onFailure { AppNotifier.showError("Не удалось сохранить ввод") }
         }
     }
 
@@ -241,7 +255,11 @@ class SalaryCalculatorViewModel(
             prevMonthData = salaryRepository.getMonthData(prevYear, prevMonth),
             prevMissed = salaryRepository.getMissedDays(prevYear, prevMonth),
             prevVacation = salaryRepository.getVacationDays(prevYear, prevMonth),
-            scheduleType = settingsManager.getScheduleType()
+            scheduleType = settingsManager.getScheduleType(),
+            harmClassCoef = settingsManager.getHarmClassCoef(),
+            profCoef = settingsManager.getProfCoef(),
+            intensCoef = settingsManager.getIntensCoef(),
+            baseRate = settingsManager.getBaseRateRank()
         )
 
         return SalaryCalculator.calculate(
@@ -260,6 +278,8 @@ class SalaryCalculatorViewModel(
     suspend fun saveToHistory(historyManager: HistoryManager) {
         val state = uiState.value
         val result = state.calculationResult ?: return
+        // Не сохраняем расчёт с ошибкой в историю (п.6.7 аудита).
+        if (result.error != null) return
         historyManager.saveRecord(
             state.selectedMonthIndex,
             state.selectedYear,
@@ -301,9 +321,9 @@ class SalaryCalculatorViewModel(
     private suspend fun saveCurrentMonthData(state: SalaryUiState) {
         val monthIndex = state.selectedMonthIndex
         val year = state.selectedYear
-        // Загружаем существующую запись, чтобы не затереть missedDays/vacationDays
-        val existing = salaryRepository.getMonthData(year, monthIndex)
-        salaryRepository.saveMonthData(
+        // Сохраняем через транзакцию: missedDays/vacationDays не затираются
+        // гонкой (чтение existing и запись выполняются атомарно, см. СалентнаяRep).
+        salaryRepository.saveMonthPreservingMissed(
             MonthSalaryEntity(
                 year = year,
                 monthIndex = monthIndex,
@@ -316,8 +336,10 @@ class SalaryCalculatorViewModel(
                 mmDetiCountInput = state.mmDetiCountInput,
                 childrenCountInput = state.childrenCountInput,
                 stravitaInput = state.stravitaInput,
-                missedDays = existing?.missedDays ?: "",
-                vacationDays = existing?.vacationDays ?: ""
+                inyeVyplatyInput = state.inyeVyplatyInput,
+                inyeUderzhanijaInput = state.inyeUderzhanijaInput,
+                missedDays = "",
+                vacationDays = ""
             )
         )
     }

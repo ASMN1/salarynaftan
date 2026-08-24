@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import timber.log.Timber
 import java.io.File
-import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,7 +18,8 @@ import java.util.Locale
  *
  * Ограничения (защита от бесконтрольного роста):
  *  - файл ротируется по лимиту [MAX_FILE_BYTES] (обрезается до хвоста);
- *  - список файлов ограничивается [MAX_LOG_FILES].
+ *  - список файлов ограничивается [MAX_LOG_FILES];
+ *  - суммарный размер всех лог-файлов ограничивается [MAX_TOTAL_BYTES].
  * Все операции записи — короткие и синхронные (не критичны по скорости).
  */
 class FileLogTree(context: Context) : Timber.DebugTree() {
@@ -31,6 +31,7 @@ class FileLogTree(context: Context) : Timber.DebugTree() {
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
         try {
             trimOldLogs()
+            enforceTotalSizeLimit()
             val line = buildString {
                 append(timestampFormat.format(Date()))
                 append(' ')
@@ -62,9 +63,8 @@ class FileLogTree(context: Context) : Timber.DebugTree() {
         else -> "?"
     }
 
-    /** Обрезает слишком длинную строку стека, чтобы не сломать структуру файла. */
+    /** Удаляет старые ротированные файлы сверх лимита количества. */
     private fun trimOldLogs() {
-        // Удаляем старые ротированные файлы сверх лимита.
         val files = logDir.listFiles { f -> f.name.startsWith("salarynaftan") && f.isFile }
             ?: return
         if (files.size > MAX_LOG_FILES) {
@@ -72,6 +72,20 @@ class FileLogTree(context: Context) : Timber.DebugTree() {
                 .take(files.size - MAX_LOG_FILES)
                 .forEach { it.delete() }
         }
+    }
+
+    /** Удаляет самые старые файлы, пока суммарный размер не станет меньше лимита (п.6.3 аудита). */
+    private fun enforceTotalSizeLimit() {
+        val files = logDir.listFiles { f -> f.name.startsWith("salarynaftan") && f.isFile }
+            ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= MAX_TOTAL_BYTES) return
+        files.sortedBy { it.lastModified() }
+            .forEach { file ->
+                if (total <= MAX_TOTAL_BYTES) return@forEach
+                val len = file.length()
+                if (file.delete()) total -= len
+            }
     }
 
     private fun rotate() {
@@ -85,5 +99,7 @@ class FileLogTree(context: Context) : Timber.DebugTree() {
     companion object {
         private const val MAX_FILE_BYTES = 2L * 1024 * 1024 // 2 МБ
         private const val MAX_LOG_FILES = 5
+        /** Максимальный суммарный размер всех лог-файлов (10 МБ). */
+        private const val MAX_TOTAL_BYTES = 10L * 1024 * 1024
     }
 }

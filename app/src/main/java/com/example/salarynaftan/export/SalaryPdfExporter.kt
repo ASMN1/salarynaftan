@@ -181,7 +181,7 @@ object SalaryPdfExporter {
         paint.color = ExportStyle.ACCENT
         paint.typeface = bold
         paint.textSize = 16f
-        canvas.drawText(fmt(result.totalClean), MARGIN + 10f, y + 30f, paint)
+        canvas.drawText(fmt(result.dirty), MARGIN + 10f, y + 30f, paint)
 
         // К выплате
         val card2X = MARGIN + halfW + gap

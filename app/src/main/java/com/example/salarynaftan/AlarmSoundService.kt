@@ -86,13 +86,11 @@ class AlarmSoundService : Service() {
     private fun startForegroundAndRing(uri: android.net.Uri, targetVolume: Float, rampSec: Int) {
         // Уведомление + запуск в foreground, чтобы сервис не убивался системой.
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+        val channel = NotificationChannel(
                 CHANNEL_RINGING, "Звук будильника",
                 NotificationManager.IMPORTANCE_LOW
             ).apply { setSound(null, null) }
             nm.createNotificationChannel(channel)
-        }
         val notification = NotificationCompat.Builder(this, CHANNEL_RINGING)
             .setSmallIcon(R.drawable.ic_alarm_notification)
             .setContentTitle("⏰ Будильник")
@@ -114,12 +112,7 @@ class AlarmSoundService : Service() {
         // Вибрация — независимо от звука.
         vibrator = vibrationService()
         val pattern = longArrayOf(0, 800, 400)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, 0)
-        }
+        vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
 
         try {
             // Подготовка выполняется асинхронно (prepareAsync), чтобы не

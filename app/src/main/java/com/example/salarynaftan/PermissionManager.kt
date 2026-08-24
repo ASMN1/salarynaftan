@@ -71,4 +71,27 @@ class PermissionManager(private val activity: ComponentActivity) {
             }
         }
     }
+
+    /**
+     * Направляет пользователя в настройки точных будильников (Android 12+),
+     * если разрешение SCHEDULE_EXACT_ALARM отсутствует (п.6.6 аудита).
+     * Без этого разрешения сменные/обычные будильники молча не сработают.
+     */
+    fun ensureExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val alarmManager = activity.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        if (!alarmManager.canScheduleExactAlarms()) {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = android.net.Uri.fromParts("package", activity.packageName, null)
+            }
+            try {
+                activity.startActivity(intent)
+            } catch (_: Exception) {
+                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", activity.packageName, null)
+                }
+                try { activity.startActivity(fallback) } catch (_: Exception) {}
+            }
+        }
+    }
 }

@@ -1,6 +1,7 @@
 package com.example.salarynaftan.ui
 import com.example.salarynaftan.*
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.sp
 
 /** Заголовок экрана (компактный) */
 @Composable
+@SuppressLint("ModifierParameter")
 fun PremiumHeader(
     title: String,
     subtitle: String? = null,

@@ -19,15 +19,10 @@ import java.time.ZoneId
  */
 class ShiftAlarmScheduler(
     private val context: Context,
-    injectedSettingsManager: SettingsManager? = null
+    private val settingsManager: SettingsManager
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences(PreferenceKeys.ALARM_PREFS, Context.MODE_PRIVATE)
-
-    // SettingsManager инициализируется лениво — только при реальном доступе к
-    // настройкам пред-напоминания. Это позволяет unit-тестам создавать
-    // планировщик без реального Android-Контекста (DataStore).
-    private val settingsManager: SettingsManager by lazy { injectedSettingsManager ?: SettingsManager(context) }
 
     fun isAlarmScheduledForShift(type: ShiftType, brigade: Int): Boolean {
         return prefs.getBoolean("${PreferenceKeys.SHIFT_ALARM_ENABLED_PREFIX}${brigade}_${type.name}", false)

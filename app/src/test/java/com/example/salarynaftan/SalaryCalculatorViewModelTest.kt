@@ -8,8 +8,10 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -65,7 +67,8 @@ class SalaryCalculatorViewModelTest {
         SalaryCalculatorViewModel(
             savedStateHandle = SavedStateHandle(),
             settingsManager = settingsManager,
-            salaryRepository = salaryRepository
+            salaryRepository = salaryRepository,
+            appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         )
 
     @Test

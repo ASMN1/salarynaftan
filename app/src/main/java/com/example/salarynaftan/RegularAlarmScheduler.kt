@@ -136,7 +136,10 @@ class RegularAlarmScheduler(private val context: Context) {
 
     fun cancelSingleRegularAlarm(alarmId: Long) {
         // Тот же изолированный диапазон, что и при установке (п.2.1).
-        val requestCode = requestCodeFor(alarmId)
+        val requestCodeKey = "regular_alarm_request_code_$alarmId"
+        val requestCode = prefs.getInt(requestCodeKey, Int.MIN_VALUE)
+            .takeIf { it != Int.MIN_VALUE }
+            ?: requestCodeFor(alarmId)
         val intent = Intent(context, AlarmReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -145,6 +148,11 @@ class RegularAlarmScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
+        // НЕДОЧЁТ-2: удаляем ключ requestCode, чтобы prefs не засорялись
+        // мусорными ключами при многократном создании/удалении будильников.
+        if (prefs.contains(requestCodeKey)) {
+            prefs.edit().remove(requestCodeKey).apply()
+        }
     }
 
     /** Stable, collision-resistant mapping for persisted IDs; unlike modulo it

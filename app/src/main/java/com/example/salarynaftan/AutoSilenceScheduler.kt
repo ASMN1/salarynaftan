@@ -55,12 +55,50 @@ class AutoSilenceScheduler(private val context: Context) {
                         endLdt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                         piOff
                     )
+                } else {
+                    Timber.w("Авто-тишина не установлена: нет разрешения на точные будильники")
                 }
             } catch (e: Exception) {
                 // Timber вместо Log: в релизе логи пишутся в файл (п.6.4),
                 // единообразно с остальными receiver'ами.
                 Timber.e(e, "Ошибка установки авто-тишины")
             }
+        }
+    }
+
+    /**
+     * Тестовый режим авто-тишины: включает беззвучный режим через [delaySeconds]
+     * секунд и выключает через [delaySeconds] + [silenceDurationSeconds] секунд.
+     * Использует test_mode=true, чтобы обойти проверку «отсыпного дня».
+     * Возвращает false, если точные будильники запрещены.
+     */
+    fun scheduleTestSilence(delaySeconds: Int, silenceDurationSeconds: Int): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val onMillis = now + delaySeconds * 1000L
+        val offMillis = onMillis + silenceDurationSeconds * 1000L
+
+        val intentOn = Intent(context, SilentModeReceiver::class.java).apply {
+            action = PreferenceKeys.ACTION_SILENT_ON
+            putExtra("test_mode", true)
+        }
+        val intentOff = Intent(context, SilentModeReceiver::class.java).apply {
+            action = PreferenceKeys.ACTION_SILENT_OFF
+            putExtra("test_mode", true)
+        }
+        // Отдельные requestCode, чтобы не конфликтовать с реальной авто-тишиной (90001/90002).
+        val piOn = PendingIntent.getBroadcast(context, 91001, intentOn, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val piOff = PendingIntent.getBroadcast(context, 91002, intentOff, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        try {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, onMillis, piOn)
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, offMillis, piOff)
+            return true
+        } catch (e: Exception) {
+            Timber.e(e, "Ошибка установки тестовой авто-тишины")
+            return false
         }
     }
 

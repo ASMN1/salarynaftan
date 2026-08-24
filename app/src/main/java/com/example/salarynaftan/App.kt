@@ -123,32 +123,30 @@ class App : Application() {
     }
 
     private fun createAlarmNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val alarmChannel = NotificationChannel(
-                CHANNEL_ALARM,
-                "Срабатывание будильника",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Полноэкранное оповещение при срабатывании будильника"
-                setBypassDnd(true)
-                // Звук и вибрация отключены на канале — ими управляет AlarmRingingActivity
-                setSound(null, null)
-                enableVibration(false)
-            }
-            // Отдельный канал для пред-напоминаний о смене (п.6.7):
-            // звук по умолчанию и вибрация, чтобы напоминание было заметным.
-            val reminderChannel = NotificationChannel(
-                CHANNEL_SHIFT_REMINDER,
-                "Напоминание о смене",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Уведомление за N минут до смены"
-                setBypassDnd(false)
-            }
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(alarmChannel)
-            nm.createNotificationChannel(reminderChannel)
+        val alarmChannel = NotificationChannel(
+            CHANNEL_ALARM,
+            "Срабатывание будильника",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Полноэкранное оповещение при срабатывании будильника"
+            setBypassDnd(true)
+            // Звук и вибрация отключены на канале — ими управляет AlarmRingingActivity
+            setSound(null, null)
+            enableVibration(false)
         }
+        // Отдельный канал для пред-напоминаний о смене (п.6.7):
+        // звук по умолчанию и вибрация, чтобы напоминание было заметным.
+        val reminderChannel = NotificationChannel(
+            CHANNEL_SHIFT_REMINDER,
+            "Напоминание о смене",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Уведомление за N минут до смены"
+            setBypassDnd(false)
+        }
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(alarmChannel)
+        nm.createNotificationChannel(reminderChannel)
     }
 
     companion object {

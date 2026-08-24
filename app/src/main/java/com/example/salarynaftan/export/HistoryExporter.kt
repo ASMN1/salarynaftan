@@ -21,12 +21,17 @@ class HistoryExporter(private val context: Context) {
         if (records.isEmpty()) return null
 
         val csvContent = StringBuilder()
+        // UTF-8 BOM, чтобы Excel на Windows корректно отображал кириллицу (п.5.5 аудита).
+        csvContent.append("\uFEFF")
         csvContent.append("Месяц;Год;Итого начислено;К выплате;Аванс\n")
         records.forEach { record ->
             csvContent.append("${record.monthName};${record.year};${MoneyFormatter.format(record.totalClean)};${MoneyFormatter.format(record.cleanToPay)};${MoneyFormatter.format(record.advance)}\n")
         }
 
         val file = File(getExportDir(context), "history_export_${System.currentTimeMillis()}.csv")
+        // BOM добавлен в csvContent выше (п.5.5 аудита).
+        // ExportRetry не используем: метод не-suspend (контракт тестов), а runBlocking
+        // в unit-тестах без Robolectric падает.
         file.writeText(csvContent.toString())
         return file
     }

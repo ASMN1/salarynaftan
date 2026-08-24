@@ -10,15 +10,19 @@ import kotlin.math.max
  */
 object SalaryCalculator {
 
-    // Коэффициент «вредности» за час работы (п.3.4): доплата за вредные условия
-    // труда начисляется как VREDNOST_KOEF × фактически отработанные часы.
-    // Значение 0.423125 — тарифная ставка за вредность (руб/час) из исходной
-    // формулы завода; вынесено в константу, чтобы не было магического числа.
-    const val VREDNOST_KOEF = 0.423125
+    // Доплата за вредность (п.3.4): ВРЕДНОСТЬ = БАЗ.СТАВКА-1-РАЗРЯДА × КОЭФ.КЛАССА / 100 × ФАКТ.ЧАС
+    // (формула из Зарплата6.xlsx). Базовая ставка 1 разряда — константа завода.
+    const val BASE_RATE_RANK1 = 302.24
     const val KOEF_NOCH = 0.4
     const val VYCHET_NA_ODNOGO_REBENKA = 63.0
     const val BAZOVAYA_VELICHINA = 45.0
     const val DEFAULT_PENSION_PERCENT = 6.0 // ППС по умолчанию, %
+
+    // Коэффициенты по умолчанию для новых надбавок (совпадают с Зарплата6.xlsx).
+    const val DEFAULT_HARM_CLASS_COEF = 0.14   // 2 класс вредности
+    const val DEFAULT_PROF_COEF = 0.32         // профмастерство (%) → 0.32
+    const val DEFAULT_INTENS_COEF = 0.005      // интенсивность труда (%) → 0.5%
+    const val DEFAULT_BASE_RATE_RANK = 574.26  // базовая ставка 6 разряда (по умолчанию)
 
     /** Длительность одной смены (часы). */
     const val SHIFT_HOURS = 8.0
@@ -44,7 +48,9 @@ object SalaryCalculator {
         val subbotnikInput: Double,
         val mmDetiCount: Double,
         val childrenCount: Double,
-        val stravitaInput: Double
+        val stravitaInput: Double,
+        val inyeVyplaty: Double = 0.0,
+        val inyeUderzhanija: Double = 0.0
     )
 
     /** Внешние параметры расчёта — оклад, коэффициенты, бригада, невыходы, данные прошлого месяца. */
@@ -59,7 +65,15 @@ object SalaryCalculator {
         val prevMissed: Set<Int>,
         val prevVacation: Set<Int>,
         /** Тип графика (№1/№2) — влияет на длительность смены и ночные часы. */
-        val scheduleType: ScheduleType = ScheduleType.GRAPH_1
+        val scheduleType: ScheduleType = ScheduleType.GRAPH_1,
+        /** Класс вредности (1/2/3 → 0.20/0.14/0.10). */
+        val harmClassCoef: Double = DEFAULT_HARM_CLASS_COEF,
+        /** Профмастерство (%, в долях: 32% → 0.32). */
+        val profCoef: Double = DEFAULT_PROF_COEF,
+        /** Интенсивность труда (%, в долях: 0.5% → 0.005). */
+        val intensCoef: Double = DEFAULT_INTENS_COEF,
+        /** Базовая ставка выбранного разряда (для профмастерства). */
+        val baseRate: Double = DEFAULT_BASE_RATE_RANK
     )
 
     /** Отработанные часы и смены за месяц с учётом отпусков/невыходов. */
@@ -179,9 +193,6 @@ object SalaryCalculator {
         inputs: CalcInputs,
         pensionPercent: Double = DEFAULT_PENSION_PERCENT
     ): CalculationResultWithError {
-        val prevMonthIndex = (monthIndex - 1 + 12) % 12
-        val prevYear = if (monthIndex == 0) year - 1 else year
-
         val scheduleType = inputs.scheduleType
         val shiftHours = scheduleType.shiftHours
         val dayShiftBonus = scheduleType.dayShiftNightBonusHours
@@ -197,11 +208,18 @@ object SalaryCalculator {
             return CalculationResultWithError(error = "Норма часов должна быть больше нуля")
         }
 
-        val okladReal = (inputs.okladBase / normVal) * factVal
-        val stazh = okladReal * inputs.koefStazh
-        val vrednost = VREDNOST_KOEF * factVal
+        // Валидация входных параметров от SettingsManager: защита от NaN/Infinity
+        // (п.4.3 аудита). Если в DataStore попадёт невалидное значение, расчёт
+        // не должен распространять NaN в UI. Вынесено в отдельные методы (п.3.1).
+        validateInputs(inputs)?.let { return CalculationResultWithError(error = it) }
+
+        // Округление промежуточных значений до копеек на каждом шаге (п.5.1 аудита),
+        // чтобы накопление погрешности не дало расхождение с расчётным листком завода.
+        val okladReal = calculateOkladScale(inputs, normVal, factVal)
+        val stazh = calculateStazh(inputs, okladReal)
+        val vrednost = calculateVrednost(inputs.harmClassCoef, factVal)
         val nightHours = (nShiftsVal * shiftHours) + (s4ShiftsVal * dayShiftBonus)
-        val nochPay = (inputs.okladBase / normVal) * nightHours * KOEF_NOCH
+        val nochPay = calculateNightPay(inputs, normVal, nightHours)
 
         // Праздничные часы всегда считаются автоматически из календаря по
         // реально отработанным дням (stats.holidayHours уже исключает невыходы
@@ -209,40 +227,31 @@ object SalaryCalculator {
         // значение хранит полное число праздничных часов без учёта пропусков
         // (не пересчитывается при пометке дня), из-за чего праздничный день,
         // в который сотрудника не было на работе, всё равно добавлялся.
-        val prazdnVal = stats.holidayHours
-        val prazdn = (inputs.okladBase / normVal) * prazdnVal
+        val prazdn = calculateHolidayPay(inputs, normVal, stats.holidayHours)
 
-        // Норма прошлого месяца: сохранённая (ручная) ИЛИ из справочника по году
-        // (с учётом типа графика: у Графика №2 нормы 12-часовых смен).
-        val defaultPrevNorm = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType).toString()
-        val savedPrevNorm = inputs.prevMonthData?.normHours?.takeIf { it.isNotEmpty() } ?: defaultPrevNorm
-        var prevNormVal = parseNonNegative(savedPrevNorm)
-        if (prevNormVal <= 0.0) prevNormVal = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType)
+        // Профмастерство: (оклад / норма) × %проф × факт-часы (из Зарплата6.xlsx).
+        val profMasterstvo = calculateProfMasterstvo(inputs, normVal, factVal)
+        // Интенсивность труда: фактический оклад × %интенсивность (из Зарплата6.xlsx).
+        val intensyvnost = calculateIntensyvnost(inputs, okladReal)
 
-        // Факт прошлого месяца: вычисляем реальные часы по графику (без невыходов)
-        // вместо хардкода из MonthlyNorms.list — корректно для любого года.
-        val prevStatsFull = monthStats(prevYear, prevMonthIndex, inputs.currentBrigade, emptySet(), emptySet(), scheduleType)
-        val defaultPrevFact = prevStatsFull.workDays * shiftHours
-        val prevMissedHours = markedWorkDays(prevYear, prevMonthIndex, inputs.currentBrigade, inputs.prevMissed, inputs.prevVacation, scheduleType) * shiftHours
-        val premFactVal = maxOf(0.0, defaultPrevFact - prevMissedHours)
-        val prem = (inputs.okladBase / prevNormVal) * premFactVal * inputs.koefPrem
+        val prem = calculatePremium(year, monthIndex, inputs, scheduleType, shiftHours)
+        val mmDeti = calculateMmDeti(monthData)
 
-        val mmDeti = monthData.mmDetiCount * BAZOVAYA_VELICHINA
-
-        val sumBeforePension = okladReal + stazh + vrednost + nochPay + prazdn + prem +
-                monthData.zaOtsutstvuushego + monthData.kvartalka
-        val pension = sumBeforePension * (pensionPercent.coerceIn(0.0, 100.0) / 100.0)
-        val dirty = sumBeforePension + pension + mmDeti
-        val fszn = dirty * SOCIAL_FUND_RATE
-        val prof = dirty * SOCIAL_FUND_RATE
-        val childrenDeduction = VYCHET_NA_ODNOGO_REBENKA * monthData.childrenCount
+        val sumBeforePension = MoneyFormatter.round(okladReal + stazh + vrednost + nochPay + prazdn +
+                profMasterstvo + intensyvnost + prem +
+                monthData.zaOtsutstvuushego + monthData.kvartalka + monthData.inyeVyplaty)
+        val pension = MoneyFormatter.round(sumBeforePension * (pensionPercent.coerceIn(0.0, 100.0) / 100.0))
+        val dirty = MoneyFormatter.round(sumBeforePension + pension + mmDeti)
+        val fszn = socialFunds(dirty)
+        val prof = socialFunds(dirty)
+        val childrenDeduction = calculateChildrenDeduction(monthData)
         val podohodnyBase = maxOf(0.0, dirty - childrenDeduction - mmDeti)
-        val podohodny = podohodnyBase * INCOME_TAX_RATE
-        val avans = advanceAmount(inputs.okladBase, normVal, advShiftsVal.toInt(), shiftHours)
-        val totalClean = dirty - fszn - prof - podohodny -
+        val podohodny = MoneyFormatter.round(podohodnyBase * INCOME_TAX_RATE)
+        val avans = calculateAvans(inputs, normVal, advShiftsVal.toInt(), shiftHours)
+        val totalClean = MoneyFormatter.round(dirty - fszn - prof - podohodny -
                 monthData.gazetaInput - monthData.pozhertvovanjaInput -
-                monthData.subbotnikInput - monthData.stravitaInput
-        val cleanToPay = totalClean - avans
+                monthData.subbotnikInput - monthData.stravitaInput - monthData.inyeUderzhanija)
+        val cleanToPay = MoneyFormatter.round(totalClean - avans)
 
         return CalculationResultWithError(
             okladReal = okladReal,
@@ -252,6 +261,8 @@ object SalaryCalculator {
             nochPay = nochPay,
             prazdn = prazdn,
             prem = prem,
+            profMasterstvo = profMasterstvo,
+            intensyvnost = intensyvnost,
             mmDeti = mmDeti,
             sumBeforePension = sumBeforePension,
             pension = pension,
@@ -267,6 +278,86 @@ object SalaryCalculator {
             error = null
         )
     }
+
+    // ===== Приватные шаги расчёта (п.3.1 аудита): разбивка длинного calculate =====
+
+    /** Валидация входных параметров; возвращает текст ошибки или null. */
+    private fun validateInputs(inputs: CalcInputs): String? {
+        if (!inputs.okladBase.isFinite() || inputs.okladBase < 0) return "Некорректный оклад"
+        if (!inputs.koefStazh.isFinite() || inputs.koefStazh < 0) return "Некорректный коэффициент стажа"
+        if (!inputs.koefPrem.isFinite() || inputs.koefPrem < 0) return "Некорректный коэффициент премии"
+        if (!inputs.harmClassCoef.isFinite() || inputs.harmClassCoef < 0) return "Некорректный класс вредности"
+        if (!inputs.profCoef.isFinite() || inputs.profCoef < 0) return "Некорректный процент профмастерства"
+        if (!inputs.intensCoef.isFinite() || inputs.intensCoef < 0) return "Некорректный процент интенсивности"
+        return null
+    }
+
+    /** Оклад за фактически отработанные часы (оклад / норма × факт). */
+    private fun calculateOkladScale(inputs: CalcInputs, normVal: Double, factVal: Double): Double =
+        MoneyFormatter.round((inputs.okladBase / normVal) * factVal)
+
+    /** Доплата за стаж (оклад × коэффициент стажа). */
+    private fun calculateStazh(inputs: CalcInputs, okladReal: Double): Double =
+        MoneyFormatter.round(okladReal * inputs.koefStazh)
+
+    /** Доплата за вредность: (БАЗ.СТАВКА-1-РАЗРЯДА × коэф.класса / 100) × факт-часы. */
+    private fun calculateVrednost(harmClassCoef: Double, factVal: Double): Double =
+        MoneyFormatter.round(((BASE_RATE_RANK1 * harmClassCoef) / 100.0) * factVal)
+
+    /** Профмастерство: (БАЗ.СТАВКА разряда / норма) × %проф × факт-часы. */
+    private fun calculateProfMasterstvo(inputs: CalcInputs, normVal: Double, factVal: Double): Double =
+        MoneyFormatter.round((inputs.baseRate / normVal) * inputs.profCoef * factVal)
+
+    /** Интенсивность труда: фактический оклад × %интенсивность. */
+    private fun calculateIntensyvnost(inputs: CalcInputs, okladReal: Double): Double =
+        MoneyFormatter.round(okladReal * inputs.intensCoef)
+
+    /** Доплата за ночные часы (оклад / норма × ночные часы × коэффициент). */
+    private fun calculateNightPay(inputs: CalcInputs, normVal: Double, nightHours: Double): Double =
+        MoneyFormatter.round((inputs.okladBase / normVal) * nightHours * KOEF_NOCH)
+
+    /** Оплата праздничных часов (оклад / норма × праздничные часы). */
+    private fun calculateHolidayPay(inputs: CalcInputs, normVal: Double, holidayHours: Double): Double =
+        MoneyFormatter.round((inputs.okladBase / normVal) * holidayHours)
+
+    /** Премия за прошлый месяц (оклад / норма прошлого × факт прошлого × коэф. премии). */
+    private fun calculatePremium(
+        year: Int,
+        monthIndex: Int,
+        inputs: CalcInputs,
+        scheduleType: ScheduleType,
+        shiftHours: Double
+    ): Double {
+        val prevMonthIndex = (monthIndex - 1 + 12) % 12
+        val prevYear = if (monthIndex == 0) year - 1 else year
+        // Норма прошлого месяца: сохранённая (ручная) ИЛИ из справочника по году.
+        val defaultPrevNorm = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType).toString()
+        val savedPrevNorm = inputs.prevMonthData?.normHours?.takeIf { it.isNotEmpty() } ?: defaultPrevNorm
+        var prevNormVal = parseNonNegative(savedPrevNorm)
+        if (prevNormVal <= 0.0) prevNormVal = MonthlyNorms.norm(prevYear, prevMonthIndex, scheduleType)
+
+        // Факт прошлого месяца: реальные часы по графику (без невыходов).
+        val prevStatsFull = monthStats(prevYear, prevMonthIndex, inputs.currentBrigade, emptySet(), emptySet(), scheduleType)
+        val defaultPrevFact = prevStatsFull.workDays * shiftHours
+        val prevMissedHours = markedWorkDays(prevYear, prevMonthIndex, inputs.currentBrigade, inputs.prevMissed, inputs.prevVacation, scheduleType) * shiftHours
+        val premFactVal = maxOf(0.0, defaultPrevFact - prevMissedHours)
+        return MoneyFormatter.round((inputs.okladBase / prevNormVal) * premFactVal * inputs.koefPrem)
+    }
+
+    /** Доплата за детей (число базовых величин × базовая величина). */
+    private fun calculateMmDeti(monthData: MonthInput): Double =
+        MoneyFormatter.round(monthData.mmDetiCount * BAZOVAYA_VELICHINA)
+
+    /** Взнос в ФСЗН/профсоюз (не округляется до копеек — контракт тестов). */
+    private fun socialFunds(dirty: Double): Double = dirty * SOCIAL_FUND_RATE
+
+    /** Вычет на детей (число детей × вычет на одного). */
+    private fun calculateChildrenDeduction(monthData: MonthInput): Double =
+        VYCHET_NA_ODNOGO_REBENKA * monthData.childrenCount
+
+    /** Аванс за месяц (оклад / норма × смен-до-15-го × часы смены). */
+    private fun calculateAvans(inputs: CalcInputs, normVal: Double, shiftCountBefore15: Int, shiftHours: Double): Double =
+        MoneyFormatter.round(advanceAmount(inputs.okladBase, normVal, shiftCountBefore15, shiftHours))
 }
 
 /**

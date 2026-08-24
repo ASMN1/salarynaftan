@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [MonthSalaryEntity::class, SalaryHistoryEntity::class], version = 5, exportSchema = true)
+@Database(entities = [MonthSalaryEntity::class, SalaryHistoryEntity::class], version = 6, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun monthSalaryDao(): MonthSalaryDao
     abstract fun historyDao(): HistoryDao
@@ -67,6 +67,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v5 -> v6: добавляем колонки «Иные выплаты» и «Иные удержания» в месячную
+        // запись зарплаты (п.4.4 требований). Новые строки по умолчанию = '0',
+        // чтобы старые месяцы остались валидными.
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE `month_salary_new` (`year` INTEGER NOT NULL, `monthIndex` INTEGER NOT NULL, `normHours` TEXT NOT NULL, `zaOtsutstvuushego` TEXT NOT NULL, `kvartalka` TEXT NOT NULL, `gazetaInput` TEXT NOT NULL, `pozhertvovanjaInput` TEXT NOT NULL, `subbotnikInput` TEXT NOT NULL, `mmDetiCountInput` TEXT NOT NULL, `childrenCountInput` TEXT NOT NULL, `stravitaInput` TEXT NOT NULL, `inyeVyplatyInput` TEXT NOT NULL, `inyeUderzhanijaInput` TEXT NOT NULL, `missedDays` TEXT NOT NULL, `vacationDays` TEXT NOT NULL, PRIMARY KEY(`year`, `monthIndex`))")
+                db.execSQL("INSERT INTO `month_salary_new` (`year`, `monthIndex`, `normHours`, `zaOtsutstvuushego`, `kvartalka`, `gazetaInput`, `pozhertvovanjaInput`, `subbotnikInput`, `mmDetiCountInput`, `childrenCountInput`, `stravitaInput`, `inyeVyplatyInput`, `inyeUderzhanijaInput`, `missedDays`, `vacationDays`) SELECT `year`, `monthIndex`, `normHours`, `zaOtsutstvuushego`, `kvartalka`, `gazetaInput`, `pozhertvovanjaInput`, `subbotnikInput`, `mmDetiCountInput`, `childrenCountInput`, `stravitaInput`, '0', '0', `missedDays`, `vacationDays` FROM `month_salary`")
+                db.execSQL("DROP TABLE `month_salary`")
+                db.execSQL("ALTER TABLE `month_salary_new` RENAME TO `month_salary`")
+            }
+        }
+
         const val UNKNOWN_YEAR = 0
 
         fun getInstance(context: Context): AppDatabase {
@@ -76,7 +88,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "salarynaftan.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build().also { INSTANCE = it }
             }
         }

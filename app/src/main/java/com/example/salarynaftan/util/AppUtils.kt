@@ -1,7 +1,10 @@
 package com.example.salarynaftan.util
 
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import com.example.salarynaftan.AppNotifier
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.RowScope
@@ -48,6 +51,10 @@ fun shareFile(
         }
         context.startActivity(Intent.createChooser(intent, chooserTitle))
         true
+    } catch (e: ActivityNotFoundException) {
+        // Нет приложения для данного MIME-типа — показываем понятное сообщение (п.6.8 аудита).
+        AppNotifier.showError("Нет приложения для отправки файла")
+        false
     } catch (e: Exception) {
         false
     }
@@ -80,6 +87,7 @@ private fun cleanOldFiles(dir: File, maxAgeMillis: Long) {
  * Вызывается внутри `RowScope` и возвращает `Modifier` с fill-весом 1f,
  * например `Modifier.weightFill()`.
  */
+@SuppressLint("ModifierFactoryExtensionFunction")
 fun RowScope.weightFill(): Modifier = Modifier.weight(1f)
 
 /**

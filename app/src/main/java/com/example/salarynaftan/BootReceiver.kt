@@ -24,7 +24,7 @@ class BootReceiver : BroadcastReceiver() {
             kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
 
                 try {
-                    withTimeout(30_000L) {
+                    withTimeout(8_000L) {
                     val scheduler = AppDependencies.alarmScheduler
                     // rescheduleAllAfterBoot сам отменяет существующие будильники
                     // (чтобы избежать дублирования) и перепланирует по настройкам —

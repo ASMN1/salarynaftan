@@ -46,9 +46,11 @@ class AndroidComponentSmokeTest {
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) !=
                 PackageManager.PERMISSION_GRANTED
         )
-        val result = CalendarSyncCoordinator.syncMonth(
-            context, java.time.YearMonth.of(2026, 1), 1, ScheduleType.GRAPH_1
-        )
+        val result = kotlinx.coroutines.runBlocking {
+            CalendarSyncCoordinator.syncMonth(
+                context, java.time.YearMonth.of(2026, 1), 1, ScheduleType.GRAPH_1
+            )
+        }
         assertEquals(CalendarSyncResult.Failed, result)
     }
 

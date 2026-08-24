@@ -41,8 +41,9 @@ object ScheduleImageExporter {
         scheduleType: ScheduleType,
         config: Bitmap.Config
     ): File {
-        val width = 1400
-        val height = 1900
+        // Используем константы из ExportStyle вместо хардкода (п.2.3 аудита).
+        val width = ExportStyle.IMG_WIDTH
+        val height = ExportStyle.IMG_HEIGHT
 
         val bitmap = Bitmap.createBitmap(width, height, config)
         val canvas = Canvas(bitmap)
@@ -51,7 +52,7 @@ object ScheduleImageExporter {
         val paint = Paint().apply { isAntiAlias = true }
         val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         val regular = Typeface.DEFAULT
-        val margin = 70f
+        val margin = ExportStyle.IMG_MARGIN
         val contentW = width - margin * 2
 
         // --- Шапка ---
@@ -88,8 +89,8 @@ object ScheduleImageExporter {
         }
 
         // --- Сетка ---
-        val gap = 10f
-        val cellH = 150f
+        val gap = ExportStyle.IMG_GAP
+        val cellH = ExportStyle.IMG_CELL_H
         val gridStartY = gridTop + 45f
         val today = java.time.LocalDate.now()
 
@@ -218,7 +219,7 @@ object ScheduleImageExporter {
         // 0.4f вместо 0.5f: итоговый битмап 560×8640 в RGB_565 ≈ 9.7 МБ
         // вместо ~15 МБ — дополнительная защита от OOM на слабых устройствах (п.4.1).
         val tileScale = 0.4f
-        val tileWidth = (1400 * tileScale).toInt()
+        val tileWidth = (ExportStyle.IMG_WIDTH * tileScale).toInt()
         val tileHeight = (1800 * tileScale).toInt()
 
         val width = tileWidth
@@ -232,8 +233,11 @@ object ScheduleImageExporter {
             var offset = 0
             for (monthNumber in 1..12) {
                 val month = YearMonth.of(year, monthNumber)
-                val temp = createMonthImage(context, brigade, month, scheduleType)
+                // Объявляем temp до try, чтобы удалить даже при исключении
+                // в createMonthImage (п.1.4 аудита).
+                var temp: File? = null
                 try {
+                    temp = createMonthImage(context, brigade, month, scheduleType)
                     val fullBitmap = BitmapFactory.decodeFile(temp.absolutePath)
                     if (fullBitmap != null) {
                         try {
@@ -249,8 +253,9 @@ object ScheduleImageExporter {
                     }
                     offset += tileHeight
                 } finally {
-                    // Удаляем временный месяц и при ошибке decode/отрисовки.
-                    temp.delete()
+                    // Удаляем временный месяц и при ошибке decode/отрисовки,
+                    // и при исключении в createMonthImage (п.1.4 аудита).
+                    temp?.delete()
                 }
             }
 

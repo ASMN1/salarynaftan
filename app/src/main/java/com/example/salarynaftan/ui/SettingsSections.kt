@@ -1,4 +1,7 @@
+@file:SuppressLint("AutoboxingStateValueProperty")
+
 package com.example.salarynaftan.ui
+import android.annotation.SuppressLint
 import com.example.salarynaftan.*
 
 import com.example.salarynaftan.ui.SettingsViewModel.SettingsUiState
@@ -300,7 +303,7 @@ fun VolumeRampSettingCard(
     settings: SettingsManager,
     primary: Color
 ) {
-    val rampSec = remember { mutableStateOf(settings.getVolumeRampSec()) }
+    val rampSec = remember { mutableIntStateOf(settings.getVolumeRampSec()) }
     PremiumSettingCard(
         icon = "⏱️",
         title = "Нарастание громкости",
@@ -511,7 +514,7 @@ fun ShiftReminderSettingCard(
     primary: Color
 ) {
     val reminderEnabled = remember { mutableStateOf(settings.getShiftReminderMinutes() > 0) }
-    val reminderMinutes = remember { mutableStateOf(settings.getShiftReminderMinutes()) }
+    val reminderMinutes = remember { mutableIntStateOf(settings.getShiftReminderMinutes()) }
     PremiumSettingCard(
         icon = "⏰",
         title = "Напоминать о смене",

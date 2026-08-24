@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
-import android.os.Build
 import timber.log.Timber
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
@@ -36,11 +35,7 @@ class SilentModeReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences(PreferenceKeys.AUTO_SILENCE_PREFS, Context.MODE_PRIVATE)
         val action = intent.action
 
-        val hasDndPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
-            notificationManager.isNotificationPolicyAccessGranted
-        } else {
-            true
-        }
+        val hasDndPermission = notificationManager?.isNotificationPolicyAccessGranted ?: true
 
         // 1. Автоматический перезапуск таймеров на следующий день
         // Настройки авто-тишины перенесены в DataStore (п.6.8), prefs остаётся
@@ -56,22 +51,24 @@ class SilentModeReceiver : BroadcastReceiver() {
             }
         }
 
-        // 2. Умная проверка: является ли сегодняшний день ОТСЫПНЫМ для текущей бригады
+        // 2. Умная проверка: включать ли тишину. Включаем после ЛЮБОЙ ночной смены
+        // (вчера была NIGHT) — это покрывает и первую, и вторую ночь подряд, когда
+        // человек спит днём между сменами и после прихода домой.
+        // Раньше требовался ещё и выходной сегодня (OFF), что ломало сценарий
+        // двух ночей подряд (после первой ночи идёт вторая, а не выходной).
+        // В тестовом режиме (test_mode=true) проверка пропускается — пользователь
+        // хочет проверить механизм тишины независимо от графика.
+        val testMode = intent.getBooleanExtra("test_mode", false)
         val currentBrigade = settings.getBrigade()
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
-        val isOtsypnoy = ShiftSchedule.shiftFor(today, currentBrigade, scheduleType) == ShiftType.OFF &&
+        val isOtsypnoy = testMode ||
                 ShiftSchedule.shiftFor(yesterday, currentBrigade, scheduleType) == ShiftType.NIGHT
 
         try {
             if (action == PreferenceKeys.ACTION_SILENT_ON) {
                 if (isOtsypnoy && hasDndPermission) {
-                    val currentFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        notificationManager?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
-                    } else {
-                        // Для старых версий используем ringerMode
-                        audioManager.ringerMode
-                    }
+                    val currentFilter = notificationManager?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
 
                     prefs.edit()
                         .putInt(PreferenceKeys.KEY_SAVED_INTERRUPTION_FILTER, currentFilter)
@@ -79,7 +76,7 @@ class SilentModeReceiver : BroadcastReceiver() {
                         .apply()
 
                     // Включаем полную тишину (без звука и вибрации)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                    if (notificationManager != null) {
                         notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
                     } else {
                         // Fallback для старых версий
@@ -107,7 +104,7 @@ class SilentModeReceiver : BroadcastReceiver() {
                     val savedFilter = prefs.getInt(PreferenceKeys.KEY_SAVED_INTERRUPTION_FILTER, NotificationManager.INTERRUPTION_FILTER_ALL)
 
                     // Восстанавливаем предыдущий режим, только если текущий всё ещё "Без звука"
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+                    if (notificationManager != null) {
                         val currentFilter = notificationManager.currentInterruptionFilter
                         if (currentFilter == NotificationManager.INTERRUPTION_FILTER_NONE) {
                             notificationManager.setInterruptionFilter(savedFilter)

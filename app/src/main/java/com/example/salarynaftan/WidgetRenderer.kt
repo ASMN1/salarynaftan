@@ -46,11 +46,16 @@ class WidgetRenderer {
                 else -> overDark(shiftColor, 0.85f)
             }
             views.setInt(cellId, "setBackgroundResource", R.drawable.widget_cell_round)
-            views.setColorStateList(
-                cellId,
-                "setBackgroundTintList",
-                android.content.res.ColorStateList.valueOf(background)
-            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                views.setColorStateList(
+                    cellId,
+                    "setBackgroundTintList",
+                    android.content.res.ColorStateList.valueOf(background)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                views.setInt(cellId, "setBackgroundTintList", background)
+            }
             views.setTextViewText(numId, model.day.toString())
             views.setTextColor(numId, when {
                 model.isToday -> colors.primary

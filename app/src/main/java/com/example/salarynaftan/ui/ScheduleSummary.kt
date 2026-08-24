@@ -62,14 +62,16 @@ fun MonthlyStatsCard(
     // Единый источник подсчёта итогов месяца — SalaryCalculator.monthStats
     // (тот же, что использует расчёт зарплаты). DRY: обе карточки считают
     // рабочие смены/ночные часы/аванс одинаково.
-    val stats = SalaryCalculator.monthStats(
-        year = visibleMonth.year,
-        monthIndex = monthIndex,
-        brigade = selectedBrigade,
-        missedDays = missedDays,
-        vacationDays = vacationDays,
-        scheduleType = scheduleType
-    )
+    val stats = remember(visibleMonth, selectedBrigade, missedDays, vacationDays, scheduleType) {
+        SalaryCalculator.monthStats(
+            year = visibleMonth.year,
+            monthIndex = monthIndex,
+            brigade = selectedBrigade,
+            missedDays = missedDays,
+            vacationDays = vacationDays,
+            scheduleType = scheduleType
+        )
+    }
     val workDays = stats.workDaysInt
     val holidayHours = stats.holidayHours
     val nightCount = stats.nightCount

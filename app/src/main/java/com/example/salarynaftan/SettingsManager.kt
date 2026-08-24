@@ -145,8 +145,8 @@ class SettingsManager(context: Context) {
         dataStore.setBrigade(brigade)
         _brigade.value = dataStore.getBrigade()
         // Compatibility mirror for pre-DataStore widget/configuration data.
-        // Runtime readers use DataStore only; this mirror can be removed after
-        // the legacy widget migration window.
+        // Runtime readers use DataStore only; this mirror is kept because
+        // SettingsManagerTest.setBrigade writes to shared preferences for widget.
         appContext.getSharedPreferences(PreferenceKeys.SETTINGS_PREFS, Context.MODE_PRIVATE)
             .edit().putInt(PreferenceKeys.BRIGADE_KEY, _brigade.value).apply()
         ShiftWidgetProvider.triggerUpdate(appContext)
@@ -157,6 +157,8 @@ class SettingsManager(context: Context) {
             val start = getAutoSilenceStart()
             val end = getAutoSilenceEnd()
             try {
+                // Локальный инстанс планировщика: внедрить AlarmScheduler через DI
+                // невозможно без цикла (AlarmScheduler сам зависит от SettingsManager).
                 AlarmScheduler(appContext).updateAutoSilenceAlarms(true, start, end)
             } catch (_: Exception) {
                 // Невалидное время/доступ — пропускаем, тишина просто сохранит прежние таймеры.
@@ -178,6 +180,26 @@ class SettingsManager(context: Context) {
     fun getStazhKoef(): Double = dataStore.getStazhKoef().toDouble()
 
     fun saveStazhKoef(value: Double) = dataStore.saveStazhKoef(value.toFloat())
+
+    // ----- КЛАСС ВРЕДНОСТИ (1/2/3 → 0.20/0.14/0.10) -----
+    fun getHarmClassCoef(): Double = dataStore.getHarmClassCoef().toDouble()
+
+    fun saveHarmClassCoef(value: Double) = dataStore.saveHarmClassCoef(value.toFloat())
+
+    // ----- ПРОФМАСТЕРСТВО (%, в долях) -----
+    fun getProfCoef(): Double = dataStore.getProfCoef().toDouble()
+
+    fun saveProfCoef(value: Double) = dataStore.saveProfCoef(value.toFloat())
+
+    // ----- ИНТЕНСИВНОСТЬ ТРУДА (%, в долях) -----
+    fun getIntensCoef(): Double = dataStore.getIntensCoef().toDouble()
+
+    fun saveIntensCoef(value: Double) = dataStore.saveIntensCoef(value.toFloat())
+
+    // ----- БАЗОВАЯ СТАВКА РАЗРЯДА (для профмастерства) -----
+    fun getBaseRateRank(): Double = dataStore.getBaseRateRank().toDouble()
+
+    fun saveBaseRateRank(value: Double) = dataStore.saveBaseRateRank(value.toFloat())
 
     // ----- ВЫБРАННЫЙ МЕСЯЦ ЗАРПЛАТЫ -----
     fun getSelectedMonthIndex(): Int = dataStore.getSelectedMonthIndex()

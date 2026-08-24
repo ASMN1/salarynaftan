@@ -109,8 +109,11 @@ fun ResultCard(
             ResultRow("Ночные часы (${result.nightHours.toInt()} ч)", result.nochPay)
             if (result.prazdn > 0) ResultRow("Праздничные часы", result.prazdn)
             ResultRow("Премия (за прошлый мес.)", result.prem)
-            ResultRow("За отсутств. сотрудника", parseNonNegative(state.zaOtsutstvuushego))
-            ResultRow("Квартальная премия", parseNonNegative(state.kvartalka))
+            if (parseNonNegative(state.zaOtsutstvuushego) > 0) ResultRow("За отсутств. сотрудника", parseNonNegative(state.zaOtsutstvuushego))
+            if (parseNonNegative(state.kvartalka) > 0) ResultRow("Квартальная премия", parseNonNegative(state.kvartalka))
+            if (result.profMasterstvo > 0) ResultRow("Профмастерство", result.profMasterstvo)
+            if (result.intensyvnost > 0) ResultRow("Интенсивность труда", result.intensyvnost)
+            parseExtraItems(state.inyeVyplatyInput).forEach { it -> if (it.amount > 0) ResultRow("Иные выплаты: ${if (it.name.isBlank()) "позиция" else it.name}", it.amount) }
             if (result.mmDeti > 0) ResultRow("МП на детей до 3л (${displayInt(state.mmDetiCountInput)} баз.вел.)", result.mmDeti)
             ResultRow("ППС ($pensionPercent%)", result.pension)
 
@@ -136,14 +139,16 @@ fun ResultCard(
             ResultRow("ФСЗН (1%)", result.fszn)
             ResultRow("Профсоюз (1%)", result.prof)
             ResultRow("Подоходный налог (13%)", result.podohodny)
-            ResultRow("Газета", parseNonNegative(state.gazetaInput))
-            ResultRow("Пожертвования", parseNonNegative(state.pozhertvovanjaInput))
-            ResultRow("Субботник", parseNonNegative(state.subbotnikInput))
-            ResultRow("Стравита", parseNonNegative(state.stravitaInput))
+            if (parseNonNegative(state.gazetaInput) > 0) ResultRow("Газета", parseNonNegative(state.gazetaInput))
+            if (parseNonNegative(state.pozhertvovanjaInput) > 0) ResultRow("Пожертвования", parseNonNegative(state.pozhertvovanjaInput))
+            if (parseNonNegative(state.subbotnikInput) > 0) ResultRow("Субботник", parseNonNegative(state.subbotnikInput))
+            if (parseNonNegative(state.stravitaInput) > 0) ResultRow("Стравита", parseNonNegative(state.stravitaInput))
+            parseExtraItems(state.inyeUderzhanijaInput).forEach { it -> if (it.amount > 0) ResultRow("Иные удержания: ${if (it.name.isBlank()) "позиция" else it.name}", it.amount) }
 
             val totalUderzhano = result.fszn + result.prof + result.podohodny +
                     parseNonNegative(state.gazetaInput) + parseNonNegative(state.pozhertvovanjaInput) +
-                    parseNonNegative(state.subbotnikInput) + parseNonNegative(state.stravitaInput)
+                    parseNonNegative(state.subbotnikInput) + parseNonNegative(state.stravitaInput) +
+                    parseNonNegative(state.inyeUderzhanijaInput)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -228,11 +233,14 @@ fun ResultCard(
                             )
                             withContext(Dispatchers.Main) {
                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-                                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, "application/pdf")
+                                // Поделиться PDF через системный chooser (соцсети, мессенджеры и т.д.),
+                                // а не только открыть для просмотра.
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(viewIntent, "Открыть PDF"))
+                                context.startActivity(Intent.createChooser(shareIntent, "Поделиться расчётом (PDF)"))
                             }
                         } catch (e: Exception) {
                             Timber.e(e, "Ошибка экспорта расчёта в PDF")

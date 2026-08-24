@@ -25,6 +25,8 @@ object ScheduleIcsExporter {
      */
     fun createIcsFile(context: Context, month: YearMonth, brigade: Int, scheduleType: ScheduleType): File? {
         val monthName = month.month.toString().lowercase().replaceFirstChar { it.uppercase() }
+        // Часовой пояс берётся из системы, а не хардкод Europe/Minsk (п.5.3 аудита).
+        val tzId = java.util.TimeZone.getDefault().id
         val events = buildString {
             appendLine("BEGIN:VCALENDAR")
             appendLine("VERSION:2.0")
@@ -33,7 +35,7 @@ object ScheduleIcsExporter {
             appendLine("METHOD:PUBLISH")
             appendLine("X-WR-CALNAME:${escape("График смен $monthName ${month.year} (бригада $brigade)")}")
             appendLine("X-WR-CALDESC:${escape("График смен ОАО «Нафтан» — бригада $brigade")}")
-            appendLine("X-WR-TIMEZONE:Europe/Minsk")
+            appendLine("X-WR-TIMEZONE:$tzId")
 
             for (day in 1..month.lengthOfMonth()) {
                 val date = month.atDay(day)
@@ -61,8 +63,8 @@ object ScheduleIcsExporter {
                 val uid = "shift-${dateStr}-b${brigade}-${shift.name}@salarynaftan"
 
                 appendLine("BEGIN:VEVENT")
-                appendLine("DTSTART;TZID=Europe/Minsk:${dateStr}T${sh}${sm}00")
-                appendLine("DTEND;TZID=Europe/Minsk:${endDateStr}T${eh}${em}00")
+                appendLine("DTSTART;TZID=$tzId:${dateStr}T${sh}${sm}00")
+                appendLine("DTEND;TZID=$tzId:${endDateStr}T${eh}${em}00")
                 appendLine("SUMMARY:${escape("${shift.displayName} смена (бригада $brigade)")}")
                 appendLine("DESCRIPTION:${escape("${shift.displayName} смена · $sTime–$eTime · Бригада $brigade · ОАО «Нафтан»")}")
                 appendLine("LOCATION:${escape("ОАО «Нафтан»")}")

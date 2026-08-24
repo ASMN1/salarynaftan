@@ -19,6 +19,8 @@ data class MonthSalaryEntity(
     val mmDetiCountInput: String = "0",
     val childrenCountInput: String = "0",
     val stravitaInput: String = "0",
+    val inyeVyplatyInput: String = "0",
+    val inyeUderzhanijaInput: String = "0",
     val missedDays: String = "", // comma-separated day numbers
     val vacationDays: String = "" // comma-separated day numbers
 ) : MonthSalaryEntityLike

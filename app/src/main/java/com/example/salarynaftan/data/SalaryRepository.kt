@@ -47,6 +47,23 @@ class SalaryRepository(private val context: Context) {
         monthDao.upsertMonth(entity)
     }
 
+    /**
+     * Сохраняет месячные поля, не затирая missedDays/vacationDays при гонке.
+     * Обычный get+save (в ViewModel) не атомарен: между чтением existing и
+     * записью параллельный saveMissedDays может потерять свои данные. Здесь
+     * чтение и merge выполняются в одной транзакции Room.
+     */
+    suspend fun saveMonthPreservingMissed(entity: MonthSalaryEntity) {
+        db.withTransaction {
+            val existing = monthDao.getMonth(entity.year, entity.monthIndex)
+            val merged = entity.copy(
+                missedDays = if (entity.missedDays.isBlank()) existing?.missedDays ?: "" else entity.missedDays,
+                vacationDays = if (entity.vacationDays.isBlank()) existing?.vacationDays ?: "" else entity.vacationDays
+            )
+            monthDao.upsertMonth(merged)
+        }
+    }
+
     suspend fun getMissedDays(year: Int, monthIndex: Int): Set<Int> {
         val raw = monthDao.getMissedDays(year, monthIndex) ?: ""
         return com.example.salarynaftan.parseMissedDays(raw, year, monthIndex)
@@ -73,31 +90,21 @@ class SalaryRepository(private val context: Context) {
 
     // ===== History =====
 
-    suspend fun getHistoryRecords(): List<SalaryHistoryRecord> {
-        return historyDao.getAllRecords().map { entity ->
-            SalaryHistoryRecord(
-                monthIndex = entity.monthIndex,
-                year = entity.year,
-                monthName = entity.monthName,
-                totalClean = entity.totalClean,
-                cleanToPay = entity.cleanToPay,
-                advance = entity.advance
-            )
-        }
-    }
+    // Единый маппинг entity→record (п.3.3 аудита): устранено дублирование DRY.
+    private fun SalaryHistoryEntity.toRecord() = SalaryHistoryRecord(
+        monthIndex = monthIndex,
+        year = year,
+        monthName = monthName,
+        totalClean = totalClean,
+        cleanToPay = cleanToPay,
+        advance = advance
+    )
 
-    suspend fun getHistoryRecordsByYear(year: Int): List<SalaryHistoryRecord> {
-        return historyDao.getRecordsByYear(year).map { entity ->
-            SalaryHistoryRecord(
-                monthIndex = entity.monthIndex,
-                year = entity.year,
-                monthName = entity.monthName,
-                totalClean = entity.totalClean,
-                cleanToPay = entity.cleanToPay,
-                advance = entity.advance
-            )
-        }
-    }
+    suspend fun getHistoryRecords(): List<SalaryHistoryRecord> =
+        historyDao.getAllRecords().map { it.toRecord() }
+
+    suspend fun getHistoryRecordsByYear(year: Int): List<SalaryHistoryRecord> =
+        historyDao.getRecordsByYear(year).map { it.toRecord() }
 
     suspend fun getAvailableYears(): List<Int> = historyDao.getAvailableYears()
 

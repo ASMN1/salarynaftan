@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.salarynaftan.ScheduleType
 import com.example.salarynaftan.ShiftType
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -86,6 +88,10 @@ class DataStoreManager internal constructor(context: Context) {
         private val KEY_SALARY = stringPreferencesKey("salary_oklad_double") // новый ключ: старый хранился как float
         private val KEY_PREMIUM_COEF = floatPreferencesKey("salary_premium_koef")
         private val KEY_STAZH_KOEF = floatPreferencesKey("salary_stazh_koef")
+        private val KEY_HARM_CLASS_COEF = floatPreferencesKey("salary_harm_class_coef")
+        private val KEY_PROF_COEF = floatPreferencesKey("salary_prof_coef")
+        private val KEY_INTENS_COEF = floatPreferencesKey("salary_intens_coef")
+        private val KEY_BASE_RATE_RANK = floatPreferencesKey("salary_base_rate_rank")
         private val KEY_SELECTED_MONTH = intPreferencesKey("selected_month_index")
         private val KEY_USE_DYNAMIC_COLORS = booleanPreferencesKey("use_dynamic_colors")
         private val KEY_USE_OLED = booleanPreferencesKey("use_oled_mode")
@@ -101,6 +107,9 @@ class DataStoreManager internal constructor(context: Context) {
         private val KEY_AUTO_SILENCE_ENABLED = booleanPreferencesKey("auto_silence_enabled")
         private val KEY_AUTO_SILENCE_START = stringPreferencesKey("auto_silence_start")
         private val KEY_AUTO_SILENCE_END = stringPreferencesKey("auto_silence_end")
+        // ID календаря, в который синхронизировались смены (п.4.2 аудита):
+        // удаление должно идти по тому же календарю, что и добавление.
+        private val KEY_CALENDAR_ID = longPreferencesKey("calendar_id")
         // Версия данных настроек: при изменении структуры ключей увеличиваем
         // SCHEMA_VERSION и добавляем соответствующий шаг миграции (№9).
         private val KEY_DATA_VERSION = intPreferencesKey("data_version")
@@ -117,6 +126,10 @@ class DataStoreManager internal constructor(context: Context) {
         private val DEFAULT_SURFACE_COLOR_LIGHT = 0xFF5F5F5F.toInt()
         private const val DEFAULT_BRIGADE = 1
         private const val DEFAULT_STAZH_KOEF = 0.25f
+        private const val DEFAULT_HARM_CLASS_COEF = 0.14f   // 2 класс вредности
+        private const val DEFAULT_PROF_COEF = 0.32f          // профмастерство, % → 0.32
+        private const val DEFAULT_INTENS_COEF = 0.005f       // интенсивность, % → 0.5
+        private const val DEFAULT_BASE_RATE_RANK = 574.26f    // базовая ставка 6 разряда
         private const val DEFAULT_SELECTED_MONTH = 5
         private const val DEFAULT_PPS_PERCENT = 6f
         private val DEFAULT_MORNING_COLOR = ShiftType.MORNING.defaultColorArgb
@@ -217,6 +230,22 @@ class DataStoreManager internal constructor(context: Context) {
     fun getStazhKoef(): Float = load(KEY_STAZH_KOEF, DEFAULT_STAZH_KOEF)
     fun saveStazhKoef(v: Float) = save(KEY_STAZH_KOEF, v)
 
+    // ---- Класс вредности (1/2/3 → 0.20/0.14/0.10) ----
+    fun getHarmClassCoef(): Float = load(KEY_HARM_CLASS_COEF, DEFAULT_HARM_CLASS_COEF) { it.coerceIn(0f, 1f) }
+    fun saveHarmClassCoef(v: Float) = save(KEY_HARM_CLASS_COEF, v) { it.coerceIn(0f, 1f) }
+
+    // ---- Профмастерство (%, в долях) ----
+    fun getProfCoef(): Float = load(KEY_PROF_COEF, DEFAULT_PROF_COEF) { it.coerceIn(0f, 1f) }
+    fun saveProfCoef(v: Float) = save(KEY_PROF_COEF, v) { it.coerceIn(0f, 1f) }
+
+    // ---- Интенсивность труда (%, в долях) ----
+    fun getIntensCoef(): Float = load(KEY_INTENS_COEF, DEFAULT_INTENS_COEF) { it.coerceIn(0f, 1f) }
+    fun saveIntensCoef(v: Float) = save(KEY_INTENS_COEF, v) { it.coerceIn(0f, 1f) }
+
+    // ---- Базовая ставка выбранного разряда (для профмастерства) ----
+    fun getBaseRateRank(): Float = load(KEY_BASE_RATE_RANK, DEFAULT_BASE_RATE_RANK) { it.coerceIn(1f, 5000f) }
+    fun saveBaseRateRank(v: Float) = save(KEY_BASE_RATE_RANK, v) { it.coerceIn(1f, 5000f) }
+
     // ---- Selected Month ----
     fun getSelectedMonthIndex(): Int = load(KEY_SELECTED_MONTH, DEFAULT_SELECTED_MONTH) { it.coerceIn(0, 11) }
     fun saveSelectedMonthIndex(i: Int) = save(KEY_SELECTED_MONTH, i) { it.coerceIn(0, 11) }
@@ -256,6 +285,13 @@ class DataStoreManager internal constructor(context: Context) {
     // ---- Авто-тишина (SharedPreferences перенесена в DataStore, п.6.8) ----
     fun getAutoSilenceEnabled(): Boolean = load(KEY_AUTO_SILENCE_ENABLED, DEFAULT_AUTO_SILENCE_ENABLED)
     fun saveAutoSilenceEnabled(isEnabled: Boolean) = save(KEY_AUTO_SILENCE_ENABLED, isEnabled)
+
+    // ---- ID календаря для синхронизации смен (п.4.2 аудита) ----
+    fun getCalendarId(): Long? {
+        val id = load(KEY_CALENDAR_ID, 0L)
+        return if (id > 0L) id else null
+    }
+    fun saveCalendarId(id: Long) = save(KEY_CALENDAR_ID, id)
 
     fun getAutoSilenceStart(): String = load(KEY_AUTO_SILENCE_START, DEFAULT_AUTO_SILENCE_START)
     fun saveAutoSilenceStart(time: String) =
@@ -325,6 +361,7 @@ class DataStoreManager internal constructor(context: Context) {
         getAutoSilenceEnabled()
         getAutoSilenceStart()
         getAutoSilenceEnd()
+        getCalendarId()
         getMorningColor()
         getDayColor()
         getNightColor()
@@ -380,10 +417,24 @@ class DataStoreManager internal constructor(context: Context) {
     private fun <T> load(key: Preferences.Key<T>, default: T, coerce: (T) -> T = { it }): T {
         return synchronized(loadedKeys) {
             if (key !in loadedKeys) {
-                // Synchronous getters are retained for compatibility, but never
-                // block the caller. The async initializer fills the cache before
-                // normal UI use; a default is safe during the very first frame.
-                val read = (processCache[key] as? T) ?: default
+                val cached = processCache[key]
+                val read = if (cached != null) {
+                    (cached as? T) ?: run {
+                        timber.log.Timber.w("DataStoreManager: тип ключа не совпадает, default")
+                        default
+                    }
+                } else {
+                    // КРИТИЧЕСКИЙ ФИКС: раньше при первом доступе читали только
+                    // processCache, который на новом старте процесса пуст — в кэш
+                    // попадал дефолт, и асинхронный migrateAndLoad() уже не мог
+                    // перезаписать его (loadedKeys содержит ключ). В результате
+                    // ВСЕ сохранённые настройки сбрасывались при каждом запуске.
+                    // Теперь при первом обращении читаем реальное значение с диска
+                    // на фоновом потоке, чтобы не блокировать UI.
+                    runBlocking(Dispatchers.IO) {
+                        store.data.first()[key]
+                    } ?: default
+                }
                 cache[key] = read as Any
                 loadedKeys.add(key)
             }

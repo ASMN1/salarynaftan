@@ -2,6 +2,7 @@ package com.example.salarynaftan.ui
 import com.example.salarynaftan.*
 import com.example.salarynaftan.R
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -38,12 +39,13 @@ import com.example.salarynaftan.util.weightFill
 import org.koin.compose.koinInject
 import java.util.Locale
 
+@SuppressLint("BatteryLife")
 @Composable
 fun AlarmsTabScreen() {
     val context = LocalContext.current
     val settingsManager = koinInject<SettingsManager>()
     val scheduler = koinInject<AlarmScheduler>()
-    var selectedBrigade by remember { mutableStateOf(settingsManager.getBrigade()) }
+    var selectedBrigade by remember { mutableIntStateOf(settingsManager.getBrigade()) }
 
     // Оставляем карточку про автозапуск, только если приложение ещё
     // ограничено оптимизацией батареи — после исключения она скрывается.
@@ -117,66 +119,6 @@ fun AlarmsTabScreen() {
                         )
                     }) {
                         Text("Настроить автозапуск", color = Color(0xFFFFA726), fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // ===== Кнопка тестового будильника (№19 из UI/UX) =====
-        AlarmSectionCard(
-            title = "Проверка",
-            subtitle = "Убедиться, что звук и вибрация работают",
-            icon = "🧪"
-        ) {
-            var testStatus by remember { mutableStateOf<String?>(null) }
-            var needsPermission by remember { mutableStateOf(false) }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = {
-                        val ok = scheduler.scheduleTestAlarm(10)
-                        if (ok) {
-                            testStatus = "Сигнал через 10 сек..."
-                            needsPermission = false
-                        } else {
-                            needsPermission = true
-                            testStatus = null
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = primary),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Проверить будильник", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                if (testStatus != null) {
-                    Text(testStatus!!, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = primary)
-                }
-            }
-            if (needsPermission) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 18.dp, end = 18.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Точные будильники отключены. Разрешите их, чтобы звук работал.",
-                        fontSize = 12.sp,
-                        color = Color(0xFFFF5252),
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = {
-                        context.startActivity(
-                            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                        )
-                    }) {
-                        Text("Разрешить", color = primary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -267,9 +209,6 @@ fun AlarmsTabScreen() {
                 }
             }
         }
-
-        // ===== Карточка авто-тишины =====
-        AutoSilenceCard(scheduler = scheduler)
 
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -439,7 +378,7 @@ private fun ShiftAlarmRow(
     }
 
     if (showDialog) {
-        var tempTimes by remember { mutableStateOf(times.toMutableList()) }
+        var tempTimes by remember { mutableStateOf(times) }
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("Время сигналов", fontWeight = FontWeight.Bold) },
@@ -671,139 +610,6 @@ private fun RegularAlarmRow(
                 modifier = Modifier.padding(9.dp).size(18.dp)
             )
         }
-    }
-}
-
-// ===== Карточка авто-тишины =====
-@Composable
-private fun AutoSilenceCard(scheduler: AlarmScheduler) {
-    val context = LocalContext.current
-    // Настройки авто-тишины — в DataStore (п.6.8); prefs не используется.
-    val settings = remember(context) { SettingsManager(context) }
-    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-
-    var isEnabled by remember { mutableStateOf(settings.getAutoSilenceEnabled()) }
-    var startTime by remember { mutableStateOf(settings.getAutoSilenceStart()) }
-    var endTime by remember { mutableStateOf(settings.getAutoSilenceEnd()) }
-    val primary = MaterialTheme.colorScheme.primary
-
-    fun save(enabled: Boolean, start: String, end: String) {
-        isEnabled = enabled
-        startTime = start
-        endTime = end
-        settings.saveAutoSilenceEnabled(enabled)
-        settings.saveAutoSilenceStart(start)
-        settings.saveAutoSilenceEnd(end)
-        scheduler.updateAutoSilenceAlarms(enabled, start, end)
-    }
-
-    AlarmSectionCard(
-        title = "Авто-тишина",
-        subtitle = "Автоматически после ночной смены",
-        icon = "🌙"
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (isEnabled) "Тихий режим включён" else "Тихий режим выключен",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isEnabled) primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
-                if (isEnabled) {
-                    Text(
-                        text = "С $startTime до $endTime",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                    )
-                }
-            }
-            Switch(
-                checked = isEnabled,
-                onCheckedChange = { checked ->
-                    if (checked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M
-                        && !notificationManager.isNotificationPolicyAccessGranted
-                    ) {
-                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
-                    } else {
-                        save(checked, startTime, endTime)
-                    }
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = primary,
-                    uncheckedThumbColor = Color.White,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        }
-
-        AnimatedVisibility(visible = isEnabled) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TimeChip(
-                    text = startTime,
-                    onClick = {
-                        val parts = startTime.split(":")
-                        android.app.TimePickerDialog(
-                            context,
-                            { _, h, m -> save(isEnabled, String.format(Locale.US, "%02d:%02d", h, m), endTime) },
-                            parts[0].toIntOrNull() ?: 8,
-                            parts[1].toIntOrNull() ?: 0,
-                            true
-                        ).show()
-                    }
-                )
-                Text(
-                    text = " — ",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                TimeChip(
-                    text = endTime,
-                    onClick = {
-                        val parts = endTime.split(":")
-                        android.app.TimePickerDialog(
-                            context,
-                            { _, h, m -> save(isEnabled, startTime, String.format(Locale.US, "%02d:%02d", h, m)) },
-                            parts[0].toIntOrNull() ?: 16,
-                            parts[1].toIntOrNull() ?: 0,
-                            true
-                        ).show()
-                    }
-                )
-            }
-        }
-    }
-}
-
-// ===== Чип времени =====
-@Composable
-private fun TimeChip(text: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-        contentColor = MaterialTheme.colorScheme.primary
-    ) {
-        Text(
-            text = text,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-        )
     }
 }
 

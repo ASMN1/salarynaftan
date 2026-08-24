@@ -6,6 +6,9 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.CalendarContract
+import com.example.salarynaftan.data.DataStoreManager
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -31,13 +34,17 @@ object CalendarSyncManager {
      *        чтобы расчёт смен совпадал с тем, что видит пользователь.
      * @return количество добавленных событий, или -1 если календарь недоступен.
      */
-    fun syncMonthToCalendar(
+    suspend fun syncMonthToCalendar(
         context: Context,
         month: YearMonth,
         brigade: Int,
         scheduleType: ScheduleType
     ): Int {
         val calendarId = getPrimaryCalendarId(context) ?: return -1
+        // Сохраняем ID календаря, чтобы удаление шло по тому же календарю,
+        // что и добавление (п.4.2 аудита) — иначе при смене календаря по
+        // умолчанию старые события останутся и появятся дубликаты.
+        DataStoreManager.getInstance(context).saveCalendarId(calendarId)
         // Сначала удаляем старые события за этот месяц, чтобы не было дубликатов
         // при повторной синхронизации (п.6.8 аудита).
         removeMonthFromCalendar(context, month, brigade)
@@ -48,7 +55,7 @@ object CalendarSyncManager {
             val shift = try {
                 ShiftSchedule.shiftFor(date, brigade, scheduleType)
             } catch (_: IllegalArgumentException) {
-                // Невалидная бригада для выбранного графика — не роняем приложение.
+                Timber.w("Невалидная бригада %d для графика %s — смена дня %d пропущена", brigade, scheduleType, day)
                 continue
             }
             if (shift == ShiftType.OFF) continue
@@ -71,14 +78,11 @@ object CalendarSyncManager {
                 put(CalendarContract.Events.HAS_ALARM, 1)
             }
 
-            val uri = try {
-                context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
-            } catch (_: Exception) {
-                // CalendarProvider не поддерживает общую транзакцию через
-                // ContentResolver, поэтому coordinator компенсирует уже
-                // вставленные события при частичном сбое.
-                null
-            }
+            // Точечный retry вставки одного события (п.6.1 аудита): ContentResolver
+            // может временно вернуть null при занятости CalendarProvider. Ретраим
+            // ТОЛЬКО отдельный insert, а не всю месячную операцию — повтор всей
+            // операции мог бы создать дубли, если часть событий уже вставлена.
+            val uri = insertWithRetry(context, values, maxAttempts = 3)
             val eventId = try {
                 uri?.let(ContentUris::parseId)
             } catch (_: Exception) {
@@ -128,7 +132,10 @@ object CalendarSyncManager {
      * @return количество удалённых событий.
      */
     fun removeMonthFromCalendar(context: Context, month: YearMonth, brigade: Int): Int {
-        val calendarId = getPrimaryCalendarId(context) ?: return 0
+        // Используем сохранённый ID календаря, если он есть; иначе — текущий
+        // календарь по умолчанию (п.4.2 аудита).
+        val calendarId = DataStoreManager.getInstance(context).getCalendarId()
+            ?: getPrimaryCalendarId(context) ?: return 0
         var removed = 0
 
         val startMillis = month.atDay(1).atStartOfDay().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -171,19 +178,62 @@ object CalendarSyncManager {
         return removed
     }
 
+    /**
+     * Вставка одного события с повторами (п.6.1 аудита).
+     * Ретрай изолирован на уровне одного insert: повтор всей операции
+     * мог бы создать дубликаты при частичном успехе первой попытки.
+     */
+    private suspend fun insertWithRetry(context: Context, values: ContentValues, maxAttempts: Int): Uri? {
+        var lastError: Exception? = null
+        var attempt = 0
+        while (attempt < maxAttempts) {
+            try {
+                val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
+                if (uri != null) return uri
+            } catch (e: Exception) {
+                lastError = e
+            }
+            // Короткая пауза между попытками (как Thread.sleep, но без блокировки потока).
+            try { delay(200L * (1L shl attempt)) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
+            attempt++
+        }
+        // Если все попытки вернули null без исключения — логируем для диагностики (п.1.5).
+        if (lastError == null) {
+            Timber.w("insert вернул null после $maxAttempts попыток")
+        }
+        return null
+    }
+
     /** Возвращает ID календаря по умолчанию (Google или локальный). */
     private fun getPrimaryCalendarId(context: Context): Long? {
         val projection = arrayOf(
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
         )
-        // Ищем любой календарь, в который можно писать (уровень доступа >= CONTRIBUTOR).
-        // Не требуем IS_PRIMARY/VISIBLE — на многих устройствах нет «основного» календаря,
-        // и строгий запрос возвращал null → «Календарь недоступен».
-        val selection = "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ?"
-        val selectionArgs = arrayOf(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR.toString())
+        // Ищем календарь с полным доступом OWNER, чтобы удаление/изменение событий
+        // гарантированно работало (п.4.2 аудита). Если OWNER-календаря нет (например,
+        // на некоторых OEM есть только CONTRIBUTOR) — падаем до CONTRIBUTOR.
+        // Не требуем IS_PRIMARY/VISIBLE — на многих устройствах нет «основного» календаря.
         val sortOrder = "${CalendarContract.Calendars.IS_PRIMARY} DESC"
 
+        // 1) Сначала пробуем OWNER.
+        queryFirstCalendarId(context, projection, sortOrder, CalendarContract.Calendars.CAL_ACCESS_OWNER)
+            ?.let { return it }
+        // 2) Фолбэк: любой календарь, куда можно писать (CONTRIBUTOR+).
+        return queryFirstCalendarId(context, projection, sortOrder, CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR)
+    }
+
+    private fun queryFirstCalendarId(
+        context: Context,
+        projection: Array<String>,
+        sortOrder: String,
+        minAccessLevel: Int
+    ): Long? {
+        val selection = "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ?"
+        val selectionArgs = arrayOf(minAccessLevel.toString())
         return try {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
@@ -192,11 +242,7 @@ object CalendarSyncManager {
                 selectionArgs,
                 sortOrder
             )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getLong(0)
-                } else {
-                    null
-                }
+                if (cursor.moveToFirst()) cursor.getLong(0) else null
             }
         } catch (_: Exception) {
             null
@@ -206,7 +252,7 @@ object CalendarSyncManager {
 
 /** Координатор use-case синхронизации, отделённый от UI и Android API. */
 object CalendarSyncCoordinator {
-    fun syncMonth(
+    suspend fun syncMonth(
         context: Context,
         month: YearMonth,
         brigade: Int,
